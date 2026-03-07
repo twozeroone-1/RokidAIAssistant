@@ -112,6 +112,7 @@
     <string name="supports_vision">비전</string>
     <string name="no_speech_support">오디오 미지원</string>
     <string name="no_vision_support">비전 미지원</string>
+    <string name="preview_badge">미리보기</string>
     
     <!-- API Key Validation -->
     <string name="api_key_required">API 키 필요</string>

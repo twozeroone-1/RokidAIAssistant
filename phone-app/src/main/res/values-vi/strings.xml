@@ -112,6 +112,7 @@
     <string name="supports_vision">Thị giác</string>
     <string name="no_speech_support">Không hỗ trợ âm thanh</string>
     <string name="no_vision_support">Không hỗ trợ thị giác</string>
+    <string name="preview_badge">Xem trước</string>
     
     <!-- API Key Validation -->
     <string name="api_key_required">Yêu cầu khóa API</string>

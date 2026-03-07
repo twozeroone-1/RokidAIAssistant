@@ -112,6 +112,7 @@
     <string name="supports_vision">Visione</string>
     <string name="no_speech_support">Nessun audio</string>
     <string name="no_vision_support">Nessuna visione</string>
+    <string name="preview_badge">Anteprima</string>
     
     <!-- API Key Validation -->
     <string name="api_key_required">Chiave API richiesta</string>

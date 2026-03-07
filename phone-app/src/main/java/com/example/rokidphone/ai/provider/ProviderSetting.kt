@@ -78,7 +78,7 @@ sealed class ProviderSetting {
         override val displayName: String = "Anthropic Claude",
         override val enabled: Boolean = true,
         val apiKey: String = "",
-        val modelId: String = "claude-sonnet-4.5",
+        val modelId: String = "claude-sonnet-4-6",
         val baseUrl: String = "https://api.anthropic.com/v1/"
     ) : ProviderSetting() {
         @Transient
@@ -135,7 +135,7 @@ sealed class ProviderSetting {
         override val displayName: String = "xAI Grok",
         override val enabled: Boolean = true,
         val apiKey: String = "",
-        val modelId: String = "grok-4.1",
+        val modelId: String = "grok-4.1-fast",
         val baseUrl: String = "https://api.x.ai/v1/"
     ) : ProviderSetting() {
         @Transient

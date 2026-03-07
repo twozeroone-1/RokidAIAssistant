@@ -112,6 +112,7 @@
     <string name="supports_vision">視覺</string>
     <string name="no_speech_support">不支援音訊</string>
     <string name="no_vision_support">不支援視覺</string>
+    <string name="preview_badge">預覽</string>
     
     <!-- API Key Validation -->
     <string name="api_key_required">需要 API 金鑰</string>

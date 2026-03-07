@@ -1451,7 +1451,7 @@ class PhoneAIService : Service() {
     private fun getSttFallbackModelId(provider: AiProvider): String? {
         return when (provider) {
             AiProvider.GEMINI -> "gemini-2.5-flash"
-            AiProvider.OPENAI -> "gpt-4o-mini"
+            AiProvider.OPENAI -> "gpt-5-mini"
             AiProvider.GROQ -> "whisper-large-v3"
             AiProvider.XAI -> "grok-2-latest"
             else -> AvailableModels.getModelsForProvider(provider).firstOrNull()?.id
@@ -1674,6 +1674,14 @@ class TextToSpeechService(private val context: android.content.Context) {
             langResult == android.speech.tts.TextToSpeech.LANG_NOT_SUPPORTED) {
             android.util.Log.w(TAG, "System TTS: locale '$locale' not supported, using device default")
             tts?.setLanguage(java.util.Locale.getDefault())
+        } else {
+            // Explicitly set a native voice to avoid non-native accent
+            val nativeVoice = tts?.voices?.firstOrNull { 
+                it.locale.language == locale.language && !it.isNetworkConnectionRequired 
+            }
+            if (nativeVoice != null) {
+                tts?.voice = nativeVoice
+            }
         }
 
         tts?.setSpeechRate(settings?.systemTtsSpeechRate ?: 1.0f)

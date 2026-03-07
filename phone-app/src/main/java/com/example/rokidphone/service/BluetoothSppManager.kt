@@ -193,8 +193,10 @@ class BluetoothSppManager(
                         
                         Log.d(TAG, "Connection ended, preparing to accept new connections...")
                         
-                        // Small delay before re-creating server socket
-                        delay(300)
+                        // Wait for BT stack to fully release the socket resources
+                        // before re-creating the server socket.
+                        // The glasses client waits 2s before reconnecting, so 1s here is safe.
+                        delay(1000)
                     }
                     
                 } catch (e: SecurityException) {

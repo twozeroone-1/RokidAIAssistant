@@ -112,6 +112,7 @@
     <string name="supports_vision">ビジョン</string>
     <string name="no_speech_support">音声非対応</string>
     <string name="no_vision_support">ビジョン非対応</string>
+    <string name="preview_badge">プレビュー</string>
     
     <!-- API Key Validation -->
     <string name="api_key_required">API キーが必要です</string>

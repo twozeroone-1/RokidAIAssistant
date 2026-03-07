@@ -111,8 +111,7 @@
     <string name="supports_audio">Audio</string>
     <string name="supports_vision">Visión</string>
     <string name="no_speech_support">Sin audio</string>
-    <string name="no_vision_support">Sin visión</string>
-    
+    <string name="no_vision_support">Sin visión</string>    <string name="preview_badge">Vista previa</string>    
     <!-- API Key Validation -->
     <string name="api_key_required">Se requiere clave API</string>
     <string name="api_key_not_set">No configurado</string>

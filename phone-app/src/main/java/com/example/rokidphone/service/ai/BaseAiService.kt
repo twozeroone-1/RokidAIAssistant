@@ -50,10 +50,19 @@ abstract class BaseAiService(
     }
     
     /**
-     * Get full system prompt with date
+     * Get full system prompt with date and language instruction
      */
     protected fun getFullSystemPrompt(): String {
-        return "$systemPrompt\n\nCurrent date/time: ${getCurrentDateTime()}"
+        val userLanguage = java.util.Locale.getDefault().displayLanguage
+        val languageInstruction = """
+            CRITICAL INSTRUCTIONS:
+            1. YOU MUST ALWAYS RESPOND IN ${userLanguage.uppercase()}. DO NOT USE ANY OTHER LANGUAGE.
+            2. Provide complete, conversational, and well-formed sentences. 
+            3. NEVER respond with a single word. NEVER truncate your thoughts.
+            4. If the user asks a simple question, provide the answer along with brief, helpful context.
+        """.trimIndent()
+        
+        return "$systemPrompt\n\n$languageInstruction\n\nCurrent date/time: ${getCurrentDateTime()}"
     }
     
     /**

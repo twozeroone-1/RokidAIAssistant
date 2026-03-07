@@ -229,7 +229,7 @@ object AiServiceFactory {
             AiProvider.OPENAI -> OpenAiCompatibleService(
                 apiKey = apiKey,
                 baseUrl = AiProvider.OPENAI.defaultBaseUrl,
-                modelId = "gpt-4o",
+                modelId = "gpt-5.1",
                 providerType = AiProvider.OPENAI
             )
             AiProvider.GROQ -> OpenAiCompatibleService(
@@ -241,7 +241,7 @@ object AiServiceFactory {
             AiProvider.XAI -> OpenAiCompatibleService(
                 apiKey = apiKey,
                 baseUrl = AiProvider.XAI.defaultBaseUrl,
-                modelId = "grok-4",
+                modelId = "grok-4.1-fast",
                 providerType = AiProvider.XAI
             )
             // DeepSeek, Anthropic, Alibaba, Zhipu, Baidu, Custom do not support STT

@@ -188,8 +188,8 @@ class BluetoothSppClient(
                     
                     if (attempt < maxRetries) {
                         // Progressive backoff: longer delays for more failed attempts
-                        // This gives the Bluetooth stack time to clean up resources
-                        val delayMs = 1500L + (attempt * 1000L)  // 2.5s, 3.5s, 4.5s...
+                        // Start with 3s to give phone server time to restart its listening socket
+                        val delayMs = 2500L + (attempt * 1500L)  // 4s, 5.5s, 7s...
                         Log.d(TAG, "Connection failed. Waiting ${delayMs}ms before retry $attempt/$maxRetries...")
                         delay(delayMs)
                         
@@ -537,16 +537,33 @@ class BluetoothSppClient(
     }
     
     /**
-     * Handle disconnection
+     * Handle disconnection and attempt auto-reconnect
      */
     private suspend fun handleDisconnection() {
         if (_connectionState.value == BluetoothClientState.DISCONNECTED) return
         
         Log.d(TAG, "Handling disconnection...")
+        
+        // Cancel heartbeat so it doesn't interfere with reconnection
+        heartbeatJob?.cancel()
+        heartbeatJob = null
+        
         closeSocket()
         
         _connectionState.value = BluetoothClientState.DISCONNECTED
         _connectedDeviceName.value = null
+        
+        // Auto-reconnect to the last connected device
+        val deviceToReconnect = lastConnectedDevice
+        if (deviceToReconnect != null) {
+            Log.d(TAG, "Will auto-reconnect to ${getSafeDeviceName(deviceToReconnect)} in 2s...")
+            // Wait for the phone server to restart its listening socket
+            delay(2000)
+            // Only reconnect if still disconnected (user may have manually triggered something)
+            if (_connectionState.value == BluetoothClientState.DISCONNECTED) {
+                connect(deviceToReconnect)
+            }
+        }
     }
     
     /**

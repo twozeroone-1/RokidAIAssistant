@@ -26,7 +26,7 @@ class OpenAiCompatibleServiceTest {
 
     private fun createService(
         apiKey: String = "test-api-key",
-        modelId: String = "gpt-4",
+        modelId: String = "gpt-5.1",
         providerType: AiProvider = AiProvider.OPENAI
     ): OpenAiCompatibleService = OpenAiCompatibleService(
         apiKey = apiKey,
@@ -61,7 +61,7 @@ class OpenAiCompatibleServiceTest {
         val service = OpenAiCompatibleService(
             apiKey = "sk-test",
             baseUrl = mockServer.baseUrl,
-            modelId = "gpt-4o",
+            modelId = "gpt-5.1",
             systemPrompt = "Be brief",
             temperature = 0.3f,
             maxTokens = 512,
@@ -79,7 +79,7 @@ class OpenAiCompatibleServiceTest {
         assertThat(request.path).isEqualTo("/chat/completions")
         assertThat(request.headers["Authorization"]).isEqualTo("Bearer sk-test")
         val body = JSONObject(request.body.readUtf8())
-        assertThat(body.getString("model")).isEqualTo("gpt-4o")
+        assertThat(body.getString("model")).isEqualTo("gpt-5.1")
         assertThat(body.getDouble("temperature")).isWithin(0.01).of(0.3)
         assertThat(body.getInt("max_tokens")).isEqualTo(512)
         assertThat(body.getDouble("top_p")).isWithin(0.01).of(0.95)
@@ -341,6 +341,66 @@ class OpenAiCompatibleServiceTest {
             val result = service.chat("ping")
             assertThat(result).isEqualTo("ok-$provider")
         }
+    }
+
+    // ==================== Grok 4 Reasoning-Only Constraint Tests ====================
+
+    @Test
+    fun `chat - Grok 4 strips frequency and presence penalty from request`() = runTest {
+        val service = OpenAiCompatibleService(
+            apiKey = "xai-test",
+            baseUrl = mockServer.baseUrl,
+            modelId = "grok-4",
+            providerType = AiProvider.XAI,
+            frequencyPenalty = 0.8f,
+            presencePenalty = 0.5f
+        )
+        mockServer.server.enqueue(
+            jsonResponse(TestFixtures.MockResponses.openAiChatSuccess("Grok response"))
+        )
+
+        service.chat("Hello Grok")
+
+        val request = mockServer.server.takeRequest()
+        val body = JSONObject(request.body.readUtf8())
+        assertThat(body.getString("model")).isEqualTo("grok-4")
+        assertThat(body.has("frequency_penalty")).isFalse()
+        assertThat(body.has("presence_penalty")).isFalse()
+    }
+
+    @Test
+    fun `chat - Non-reasoning Grok model includes penalty params`() = runTest {
+        val service = OpenAiCompatibleService(
+            apiKey = "xai-test",
+            baseUrl = mockServer.baseUrl,
+            modelId = "grok-4.1-fast",
+            providerType = AiProvider.XAI,
+            frequencyPenalty = 0.3f,
+            presencePenalty = 0.4f
+        )
+        mockServer.server.enqueue(
+            jsonResponse(TestFixtures.MockResponses.openAiChatSuccess("Fast response"))
+        )
+
+        service.chat("Hello Fast Grok")
+
+        val request = mockServer.server.takeRequest()
+        val body = JSONObject(request.body.readUtf8())
+        assertThat(body.getString("model")).isEqualTo("grok-4.1-fast")
+        assertThat(body.getDouble("frequency_penalty")).isWithin(0.01).of(0.3)
+        assertThat(body.getDouble("presence_penalty")).isWithin(0.01).of(0.4)
+    }
+
+    @Test
+    fun `isReasoningOnlyModel - correctly identifies grok-4 variants`() {
+        assertThat(OpenAiCompatibleService.isReasoningOnlyModel("grok-4")).isTrue()
+        assertThat(OpenAiCompatibleService.isReasoningOnlyModel("grok-4-0709")).isTrue()
+        assertThat(OpenAiCompatibleService.isReasoningOnlyModel("grok-4-latest")).isTrue()
+        // grok-4.1-fast starts with "grok-4." not "grok-4-"
+        assertThat(OpenAiCompatibleService.isReasoningOnlyModel("grok-4.1-fast")).isFalse()
+        assertThat(OpenAiCompatibleService.isReasoningOnlyModel("grok-4.20")).isFalse()
+        assertThat(OpenAiCompatibleService.isReasoningOnlyModel("grok-3")).isFalse()
+        assertThat(OpenAiCompatibleService.isReasoningOnlyModel("gpt-5.1")).isFalse()
     }
 
     @Test

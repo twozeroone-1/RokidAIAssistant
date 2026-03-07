@@ -352,7 +352,7 @@ private class OpenAiWhisperSttAdapter(
         com.example.rokidphone.service.ai.OpenAiCompatibleService(
             apiKey = apiKey,
             baseUrl = com.example.rokidphone.data.AiProvider.OPENAI.defaultBaseUrl,
-            modelId = "gpt-4o",
+            modelId = "gpt-5.1",
             providerType = com.example.rokidphone.data.AiProvider.OPENAI
         )
     }

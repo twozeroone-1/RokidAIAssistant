@@ -130,7 +130,7 @@ object TestFixtures {
               "type": "message",
               "role": "assistant",
               "content": [{"type": "text", "text": "$text"}],
-              "model": "claude-sonnet-4-5",
+              "model": "claude-sonnet-4-6",
               "stop_reason": "end_turn",
               "usage": {"input_tokens": 10, "output_tokens": 5}
             }

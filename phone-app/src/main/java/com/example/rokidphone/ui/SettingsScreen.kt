@@ -707,6 +707,9 @@ fun ModelSelectionDialog(
                                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                                 modifier = Modifier.padding(top = 4.dp)
                             ) {
+                                if (model.isPreview) {
+                                    PreviewBadge()
+                                }
                                 if (model.supportsAudio) {
                                     CapabilityBadge(
                                         icon = Icons.Default.Mic,
@@ -745,6 +748,24 @@ fun ModelSelectionDialog(
             }
         }
     )
+}
+
+/**
+ * Badge to indicate a Preview / experimental model
+ */
+@Composable
+private fun PreviewBadge() {
+    Surface(
+        shape = MaterialTheme.shapes.small,
+        color = MaterialTheme.colorScheme.tertiaryContainer,
+        contentColor = MaterialTheme.colorScheme.onTertiaryContainer
+    ) {
+        Text(
+            text = stringResource(R.string.preview_badge),
+            style = MaterialTheme.typography.labelSmall,
+            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+        )
+    }
 }
 
 /**

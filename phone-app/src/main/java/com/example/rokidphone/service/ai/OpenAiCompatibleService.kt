@@ -36,6 +36,13 @@ class OpenAiCompatibleService(
     
     companion object {
         private const val TAG = "OpenAiCompatibleService"
+
+        /**
+         * Grok 4 is a pure reasoning model that rejects
+         * presencePenalty, frequencyPenalty, stop, and reasoning_effort.
+         */
+        fun isReasoningOnlyModel(modelId: String): Boolean =
+            modelId == "grok-4" || modelId.startsWith("grok-4-") && !modelId.startsWith("grok-4.")
     }
     
     override val provider = providerType
@@ -195,14 +202,26 @@ class OpenAiCompatibleService(
                 })
             }
             
+            val isReasoningOnly = isReasoningOnlyModel(modelId)
+
             val requestJson = JSONObject().apply {
                 put("model", modelId)
                 put("messages", messages)
                 put("temperature", temperature.toDouble())
-                put("max_tokens", maxTokens)
+                
+                val requiresCompletionTokens = modelId.startsWith("o") || modelId.startsWith("gpt-5")
+                if (requiresCompletionTokens) {
+                    put("max_completion_tokens", maxTokens)
+                } else {
+                    put("max_tokens", maxTokens)
+                }
+                
                 put("top_p", topP.toDouble())
-                if (frequencyPenalty != 0.0f) put("frequency_penalty", frequencyPenalty.toDouble())
-                if (presencePenalty != 0.0f) put("presence_penalty", presencePenalty.toDouble())
+                // Grok 4 (pure reasoning) rejects penalty & stop params
+                if (!isReasoningOnly) {
+                    if (frequencyPenalty != 0.0f) put("frequency_penalty", frequencyPenalty.toDouble())
+                    if (presencePenalty != 0.0f) put("presence_penalty", presencePenalty.toDouble())
+                }
                 put("stream", false)
             }
             

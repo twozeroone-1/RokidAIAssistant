@@ -26,7 +26,7 @@ class AnthropicServiceTest {
 
     private fun createService(
         apiKey: String = "test-api-key",
-        modelId: String = "claude-sonnet-4-5"
+        modelId: String = "claude-sonnet-4-6"
     ): AnthropicService = AnthropicService(
         apiKey = apiKey,
         modelId = modelId,
@@ -85,7 +85,7 @@ class AnthropicServiceTest {
     fun `chat - request body format is correct`() = runTest {
         val service = AnthropicService(
             apiKey = "test-key",
-            modelId = "claude-sonnet-4-5",
+            modelId = "claude-sonnet-4-6",
             systemPrompt = "Be helpful",
             temperature = 0.5f,
             maxTokens = 1024,
@@ -101,16 +101,71 @@ class AnthropicServiceTest {
         val request = mockServer.server.takeRequest()
         assertThat(request.path).isEqualTo("/messages")
         val body = JSONObject(request.body.readUtf8())
-        assertThat(body.getString("model")).isEqualTo("claude-sonnet-4-5")
+        assertThat(body.getString("model")).isEqualTo("claude-sonnet-4-6")
         assertThat(body.getInt("max_tokens")).isEqualTo(1024)
         assertThat(body.getDouble("temperature")).isWithin(0.01).of(0.5)
-        assertThat(body.getDouble("top_p")).isWithin(0.01).of(0.9)
+        // Claude 4.x: top_p should NOT be sent alongside temperature
+        assertThat(body.has("top_p")).isFalse()
         assertThat(body.getString("system")).contains("Be helpful")
         // Last message should be the user message
         val messages = body.getJSONArray("messages")
         val lastMsg = messages.getJSONObject(messages.length() - 1)
         assertThat(lastMsg.getString("role")).isEqualTo("user")
         assertThat(lastMsg.getString("content")).isEqualTo("Test message")
+    }
+
+    @Test
+    fun `chat - no beta header when requestedContextTokens is below 200K`() = runTest {
+        val service = AnthropicService(
+            apiKey = "test-key",
+            modelId = "claude-sonnet-4-6",
+            baseUrl = mockServer.baseUrlNoSlash,
+            requestedContextTokens = 100_000L
+        )
+        mockServer.server.enqueue(
+            jsonResponse(TestFixtures.MockResponses.anthropicChatSuccess("Hi"))
+        )
+
+        service.chat("Hello")
+
+        val request = mockServer.server.takeRequest()
+        assertThat(request.headers["anthropic-beta"]).isNull()
+    }
+
+    @Test
+    fun `chat - beta header injected when requestedContextTokens exceeds 200K for Opus 4_6`() = runTest {
+        val service = AnthropicService(
+            apiKey = "test-key",
+            modelId = "claude-opus-4-6",
+            baseUrl = mockServer.baseUrlNoSlash,
+            requestedContextTokens = 500_000L
+        )
+        mockServer.server.enqueue(
+            jsonResponse(TestFixtures.MockResponses.anthropicChatSuccess("Hi"))
+        )
+
+        service.chat("Hello")
+
+        val request = mockServer.server.takeRequest()
+        assertThat(request.headers["anthropic-beta"]).isEqualTo(AnthropicService.BETA_CONTEXT_1M)
+    }
+
+    @Test
+    fun `chat - no beta header for Haiku even with high context tokens`() = runTest {
+        val service = AnthropicService(
+            apiKey = "test-key",
+            modelId = "claude-haiku-4-5-20251001",
+            baseUrl = mockServer.baseUrlNoSlash,
+            requestedContextTokens = 500_000L
+        )
+        mockServer.server.enqueue(
+            jsonResponse(TestFixtures.MockResponses.anthropicChatSuccess("Hi"))
+        )
+
+        service.chat("Hello")
+
+        val request = mockServer.server.takeRequest()
+        assertThat(request.headers["anthropic-beta"]).isNull()
     }
 
     @Test
@@ -257,5 +312,10 @@ class AnthropicServiceTest {
     @Test
     fun `API_VERSION constant is 2023-06-01`() {
         assertThat(AnthropicService.API_VERSION).isEqualTo("2023-06-01")
+    }
+
+    @Test
+    fun `BETA_CONTEXT_1M constant is correct`() {
+        assertThat(AnthropicService.BETA_CONTEXT_1M).isEqualTo("context-1m-2025-08-07")
     }
 }

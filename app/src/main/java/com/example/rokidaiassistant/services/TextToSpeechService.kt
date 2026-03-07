@@ -206,6 +206,14 @@ class TextToSpeechService(
             val languageResult = systemTts?.setLanguage(locale)
             if (languageResult == TextToSpeech.LANG_MISSING_DATA || languageResult == TextToSpeech.LANG_NOT_SUPPORTED) {
                 systemTts?.setLanguage(Locale.getDefault())
+            } else {
+                // Explicitly set a native voice to avoid non-native accent
+                val nativeVoice = systemTts?.voices?.firstOrNull { 
+                    it.locale.language == locale.language && !it.isNetworkConnectionRequired 
+                }
+                if (nativeVoice != null) {
+                    systemTts?.voice = nativeVoice
+                }
             }
             
             val utteranceId = "tts_${System.currentTimeMillis()}"

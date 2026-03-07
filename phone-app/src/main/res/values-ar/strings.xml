@@ -112,6 +112,7 @@
     <string name="supports_vision">رؤية</string>
     <string name="no_speech_support">لا يدعم الصوت</string>
     <string name="no_vision_support">لا يدعم الرؤية</string>
+    <string name="preview_badge">معاينة</string>
     
     <!-- API Key Validation -->
     <string name="api_key_required">مفتاح API مطلوب</string>

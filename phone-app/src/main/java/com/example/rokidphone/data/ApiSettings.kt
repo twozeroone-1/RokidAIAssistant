@@ -32,7 +32,7 @@ enum class AiProvider(
         defaultBaseUrl = "https://api.openai.com/v1/",
         isOpenAiCompatible = true,
         supportsSpeech = true,  // Whisper
-        supportsVision = true   // GPT-4o Vision
+        supportsVision = true   // GPT-5.x Vision
     ),
     ANTHROPIC(
         displayNameResId = R.string.provider_anthropic,
@@ -167,6 +167,7 @@ data class ModelOption(
     val provider: AiProvider,
     val supportsAudio: Boolean = false,
     val supportsVision: Boolean = false,
+    val isPreview: Boolean = false,
     val description: String = ""
 )
 
@@ -176,20 +177,22 @@ data class ModelOption(
 object AvailableModels {
     val geminiModels = listOf(
         ModelOption(
-            id = "gemini-3-pro-preview",
-            displayName = "Gemini 3 Pro",
+            id = "gemini-3.1-pro-preview",
+            displayName = "Gemini 3.1 Pro (Preview)",
             provider = AiProvider.GEMINI,
             supportsAudio = true,
             supportsVision = true,
-            description = "Google's next-gen flagship with enhanced reasoning and multimodal capabilities"
+            isPreview = true,
+            description = "Best agentic + vibe coding capabilities (Preview)"
         ),
         ModelOption(
             id = "gemini-3-flash-preview",
-            displayName = "Gemini 3 Flash",
+            displayName = "Gemini 3 Flash (Preview)",
             provider = AiProvider.GEMINI,
             supportsAudio = true,
             supportsVision = true,
-            description = "Fast and efficient next-gen model for high-throughput tasks"
+            isPreview = true,
+            description = "Frontier performance at low cost (Preview)"
         ),
         ModelOption(
             id = "gemini-2.5-pro",
@@ -197,7 +200,7 @@ object AvailableModels {
             provider = AiProvider.GEMINI,
             supportsAudio = true,
             supportsVision = true,
-            description = "Google's most capable 2.5 model, native multimodal reasoning"
+            description = "Stable. Most capable reasoning model, supports deep coding"
         ),
         ModelOption(
             id = "gemini-2.5-flash",
@@ -205,7 +208,7 @@ object AvailableModels {
             provider = AiProvider.GEMINI,
             supportsAudio = true,
             supportsVision = true,
-            description = "Optimized for speed and efficiency, supports high-volume tasks"
+            description = "Stable. Best price-performance, low latency, high throughput"
         ),
         ModelOption(
             id = "gemini-2.5-flash-lite",
@@ -213,23 +216,7 @@ object AvailableModels {
             provider = AiProvider.GEMINI,
             supportsAudio = true,
             supportsVision = true,
-            description = "Extremely cost-effective lightweight model for low-latency applications"
-        ),
-        ModelOption(
-            id = "gemini-2.0-flash",
-            displayName = "Gemini 2.0 Flash",
-            provider = AiProvider.GEMINI,
-            supportsAudio = true,
-            supportsVision = true,
-            description = "Previous generation fast model, stable and widely supported"
-        ),
-        ModelOption(
-            id = "gemini-2.0-flash-lite",
-            displayName = "Gemini 2.0 Flash-Lite",
-            provider = AiProvider.GEMINI,
-            supportsAudio = true,
-            supportsVision = true,
-            description = "Lightweight 2.0 model for cost-sensitive applications"
+            description = "Stable. Fastest & cheapest in 2.5 series, 2M+ TPS design"
         )
     )
     
@@ -240,23 +227,39 @@ object AvailableModels {
             provider = AiProvider.OPENAI,
             supportsAudio = false,
             supportsVision = true,
-            description = "OpenAI's latest flagship. Unmatched general intelligence"
+            description = "Flagship for coding & agentic tasks, ~400K context"
         ),
         ModelOption(
-            id = "gpt-5.2-instant",
-            displayName = "GPT-5.2 Instant",
+            id = "gpt-5.2-codex",
+            displayName = "GPT-5.2 Codex",
             provider = AiProvider.OPENAI,
             supportsAudio = false,
             supportsVision = true,
-            description = "Fast variant of GPT-5.2, optimized for low-latency responses"
+            description = "Agentic coding optimized with context compaction, ~400K context"
         ),
         ModelOption(
-            id = "gpt-5",
-            displayName = "GPT-5",
+            id = "gpt-5.1",
+            displayName = "GPT-5.1",
             provider = AiProvider.OPENAI,
             supportsAudio = false,
             supportsVision = true,
-            description = "Flagship multimodal model with state-of-the-art vision analysis"
+            description = "OpenAI recommended general-purpose model, ~400K context"
+        ),
+        ModelOption(
+            id = "gpt-5-mini",
+            displayName = "GPT-5 Mini",
+            provider = AiProvider.OPENAI,
+            supportsAudio = false,
+            supportsVision = true,
+            description = "Cost-effective, high-throughput, ~128K context"
+        ),
+        ModelOption(
+            id = "gpt-5-nano",
+            displayName = "GPT-5 Nano",
+            provider = AiProvider.OPENAI,
+            supportsAudio = false,
+            supportsVision = false,
+            description = "Ultra-light classification & high-volume tasks, ~128K context"
         ),
         ModelOption(
             id = "o3",
@@ -264,15 +267,7 @@ object AvailableModels {
             provider = AiProvider.OPENAI,
             supportsAudio = false,
             supportsVision = false,
-            description = "Advanced reasoning model for complex science, coding, and math"
-        ),
-        ModelOption(
-            id = "o4-mini",
-            displayName = "o4 Mini",
-            provider = AiProvider.OPENAI,
-            supportsAudio = false,
-            supportsVision = false,
-            description = "Cost-effective reasoning model for STEM and technical analysis"
+            description = "Deep reasoning model for complex science, coding, and math, 200K context"
         )
     )
     
@@ -283,31 +278,23 @@ object AvailableModels {
             provider = AiProvider.ANTHROPIC,
             supportsAudio = false,
             supportsVision = true,
-            description = "Anthropic's most capable model with thinking mode for deep reasoning"
+            description = "Most intelligent, best for agents & coding. 200K/1M (beta) context"
         ),
         ModelOption(
-            id = "claude-sonnet-4-5",
-            displayName = "Claude Sonnet 4.5",
+            id = "claude-sonnet-4-6",
+            displayName = "Claude Sonnet 4.6",
             provider = AiProvider.ANTHROPIC,
             supportsAudio = false,
             supportsVision = true,
-            description = "The best balance of intelligence and speed for enterprise workloads"
+            description = "Best speed + intelligence balance. 200K/1M (beta) context"
         ),
         ModelOption(
-            id = "claude-haiku-4-5",
+            id = "claude-haiku-4-5-20251001",
             displayName = "Claude Haiku 4.5",
             provider = AiProvider.ANTHROPIC,
             supportsAudio = false,
             supportsVision = true,
-            description = "Blazing fast model for instant responses and simple tasks"
-        ),
-        ModelOption(
-            id = "claude-sonnet-4-20250514",
-            displayName = "Claude Sonnet 4",
-            provider = AiProvider.ANTHROPIC,
-            supportsAudio = false,
-            supportsVision = true,
-            description = "Previous generation Claude model with strong overall performance"
+            description = "Fastest frontier model, vision-capable. 200K context"
         )
     )
     
@@ -418,68 +405,53 @@ object AvailableModels {
     
     val xaiModels = listOf(
         ModelOption(
-            id = "grok-4-1-latest",
-            displayName = "Grok 4.1 Latest",
+            id = "grok-4.20",
+            displayName = "Grok 4.20 (Early Access)",
             provider = AiProvider.XAI,
             supportsAudio = false,
             supportsVision = false,
-            description = "Alias that tracks the latest Grok 4.1 release"
-        ),
-        ModelOption(
-            id = "grok-4-1",
-            displayName = "Grok 4.1",
-            provider = AiProvider.XAI,
-            supportsAudio = false,
-            supportsVision = false,
-            description = "Stable Grok 4.1 alias"
-        ),
-        ModelOption(
-            id = "grok-4-1-fast-reasoning",
-            displayName = "Grok 4.1 Fast Reasoning",
-            provider = AiProvider.XAI,
-            supportsAudio = false,
-            supportsVision = false,
-            description = "Fast reasoning variant for lower-latency responses"
-        ),
-        ModelOption(
-            id = "grok-4-0709",
-            displayName = "Grok 4 (2025-07-09)",
-            provider = AiProvider.XAI,
-            supportsAudio = false,
-            supportsVision = false,
-            description = "Pinned dated release for reproducible behavior"
-        ),
-        ModelOption(
-            id = "grok-4-latest",
-            displayName = "Grok 4 Latest",
-            provider = AiProvider.XAI,
-            supportsAudio = false,
-            supportsVision = false,
-            description = "Alias that tracks the latest Grok 4 release"
+            isPreview = true,
+            description = "Multi-Agent flagship, most capable (Early Access only)"
         ),
         ModelOption(
             id = "grok-4",
-            displayName = "Grok 4",
+            displayName = "Grok 4 (Reasoning)",
             provider = AiProvider.XAI,
             supportsAudio = false,
             supportsVision = false,
-            description = "Stable Grok 4 alias"
+            description = "Pure reasoning flagship, 256K context. No penalty/stop params"
         ),
         ModelOption(
-            id = "grok-3-latest",
-            displayName = "Grok 3 Latest",
+            id = "grok-4.1-fast",
+            displayName = "Grok 4.1 Fast",
             provider = AiProvider.XAI,
             supportsAudio = false,
             supportsVision = false,
-            description = "Alias that tracks the latest Grok 3 release"
+            description = "Best value — fastest, lowest cost, 2M context window"
         ),
         ModelOption(
-            id = "grok-3-mini-latest",
-            displayName = "Grok 3 Mini Latest",
+            id = "grok-3",
+            displayName = "Grok 3",
             provider = AiProvider.XAI,
             supportsAudio = false,
             supportsVision = false,
-            description = "Alias that tracks the latest Grok 3 Mini release"
+            description = "Stable general-purpose, 128K context"
+        ),
+        ModelOption(
+            id = "grok-3-mini",
+            displayName = "Grok 3 Mini",
+            provider = AiProvider.XAI,
+            supportsAudio = false,
+            supportsVision = false,
+            description = "Budget tier with reasoning traces, 128K context"
+        ),
+        ModelOption(
+            id = "grok-2-image-1212",
+            displayName = "Grok Imagine (Image Gen)",
+            provider = AiProvider.XAI,
+            supportsAudio = false,
+            supportsVision = false,
+            description = "Image/video generation via Grok Imagine API"
         )
     )
     
@@ -684,12 +656,12 @@ object AvailableModels {
 
     val geminiLiveModels = listOf(
         ModelOption(
-            id = "gemini-2.0-flash-exp",
-            displayName = "Gemini 2.0 Flash (Live Exp)",
+            id = "gemini-2.5-flash-exp",
+            displayName = "Gemini 2.5 Flash (Live)",
             provider = AiProvider.GEMINI_LIVE,
             supportsAudio = true,
             supportsVision = true,
-            description = "Experimental live streaming model for real-time voice interactions"
+            description = "Live streaming model for real-time voice interactions"
         )
     )
 

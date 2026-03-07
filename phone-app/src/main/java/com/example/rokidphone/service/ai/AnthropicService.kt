@@ -18,25 +18,42 @@ import org.json.JSONObject
  * API Docs: https://docs.anthropic.com/claude/reference
  * 
  * Features:
- * - Powerful reasoning capabilities
- * - Vision support (Claude 3 series)
- * - Long context support
+ * - Powerful reasoning capabilities (Claude 4.6 with Extended/Adaptive Thinking)
+ * - Vision support (Claude 4.x series)
+ * - Long context support (200K standard, 1M beta with header)
+ * 
+ * IMPORTANT: Claude 4.x enforces that temperature and top_p cannot both be set
+ * in the same request body. This service only sends temperature by default.
  */
 class AnthropicService(
     apiKey: String,
-    modelId: String = "claude-sonnet-4-5",
+    modelId: String = "claude-sonnet-4-6",
     systemPrompt: String = "",
     temperature: Float = 0.7f,
     maxTokens: Int = 2048,
     topP: Float = 1.0f,
-    internal val baseUrl: String = DEFAULT_BASE_URL
+    internal val baseUrl: String = DEFAULT_BASE_URL,
+    /**
+     * When requestedContextTokens > 200_000, the beta header for 1M context
+     * will be injected automatically for Opus/Sonnet 4.6 models.
+     */
+    private val requestedContextTokens: Long = 0L
 ) : BaseAiService(apiKey, modelId, systemPrompt, temperature, maxTokens, topP), AiServiceProvider {
     
     companion object {
         private const val TAG = "AnthropicService"
         internal const val DEFAULT_BASE_URL = "https://api.anthropic.com/v1"
         internal const val API_VERSION = "2023-06-01"
+        internal const val BETA_CONTEXT_1M = "context-1m-2025-08-07"
     }
+    
+    /**
+     * Whether to inject the 1M token context beta header.
+     * Only applicable for claude-opus-4-6 and claude-sonnet-4-6.
+     */
+    private val needs1MContext: Boolean
+        get() = requestedContextTokens > 200_000 &&
+                (modelId == "claude-opus-4-6" || modelId == "claude-sonnet-4-6")
     
     override val provider = AiProvider.ANTHROPIC
     
@@ -73,8 +90,8 @@ class AnthropicService(
             val requestJson = JSONObject().apply {
                 put("model", modelId)
                 put("max_tokens", maxTokens)
+                // Claude 4.x: Do NOT set both temperature and top_p simultaneously
                 put("temperature", temperature.toDouble())
-                put("top_p", topP.toDouble())
                 put("system", getFullSystemPrompt())
                 put("messages", messages)
             }
@@ -82,11 +99,18 @@ class AnthropicService(
             val result = executeWithRetry(TAG) { attempt ->
                 Log.d(TAG, "Sending chat request to Anthropic (attempt $attempt)")
                 
-                val request = Request.Builder()
+                val requestBuilder = Request.Builder()
                     .url("$baseUrl/messages")
                     .addHeader("x-api-key", apiKey)
                     .addHeader("anthropic-version", API_VERSION)
                     .addHeader("Content-Type", "application/json")
+                
+                // Inject 1M context beta header when needed
+                if (needs1MContext) {
+                    requestBuilder.addHeader("anthropic-beta", BETA_CONTEXT_1M)
+                }
+                
+                val request = requestBuilder
                     .post(requestJson.toString().toRequestBody("application/json".toMediaType()))
                     .build()
                 
@@ -153,11 +177,18 @@ class AnthropicService(
             val result = executeWithRetry(TAG) { attempt ->
                 Log.d(TAG, "Sending image analysis request to Anthropic (attempt $attempt)")
                 
-                val request = Request.Builder()
+                val requestBuilder = Request.Builder()
                     .url("$baseUrl/messages")
                     .addHeader("x-api-key", apiKey)
                     .addHeader("anthropic-version", API_VERSION)
                     .addHeader("Content-Type", "application/json")
+                
+                // Inject 1M context beta header when needed
+                if (needs1MContext) {
+                    requestBuilder.addHeader("anthropic-beta", BETA_CONTEXT_1M)
+                }
+                
+                val request = requestBuilder
                     .post(requestJson.toString().toRequestBody("application/json".toMediaType()))
                     .build()
                 

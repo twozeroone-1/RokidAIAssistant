@@ -243,6 +243,7 @@
     <string name="supports_vision">ภาพ</string>
     <string name="no_speech_support">ไม่รองรับเสียง</string>
     <string name="no_vision_support">ไม่รองรับภาพ</string>
+    <string name="preview_badge">ตัวอย่าง</string>
     
     <!-- API Key Validation -->
     <string name="api_key_required">ต้องการคีย์ API</string>

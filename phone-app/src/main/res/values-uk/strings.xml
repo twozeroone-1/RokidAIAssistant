@@ -112,6 +112,7 @@
     <string name="supports_vision">Зір</string>
     <string name="no_speech_support">Без аудіо</string>
     <string name="no_vision_support">Без зору</string>
+    <string name="preview_badge">Попередній перегляд</string>
     
     <!-- API Key Validation -->
     <string name="api_key_required">Потрібен ключ API</string>

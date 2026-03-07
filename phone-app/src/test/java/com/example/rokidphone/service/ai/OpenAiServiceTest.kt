@@ -23,7 +23,7 @@ class OpenAiServiceTest {
         OpenAiCompatibleService(
             apiKey = apiKey,
             baseUrl = serverRule.baseUrl,
-            modelId = "gpt-4o",
+            modelId = "gpt-5.1",
             providerType = AiProvider.OPENAI
         )
 
