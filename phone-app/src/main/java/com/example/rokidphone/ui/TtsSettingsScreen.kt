@@ -71,6 +71,7 @@ fun TtsSettingsScreen(
                     IconButton(onClick = {
                         onSettingsChange(
                             settings.copy(
+                                autoReadResponsesAloud = true,
                                 ttsProvider = TtsProvider.EDGE_TTS,
                                 ttsVoiceOverride = "",
                                 ttsSpeechRate = 1.0f,
@@ -110,6 +111,41 @@ fun TtsSettingsScreen(
                     modifier = Modifier.padding(16.dp),
                     color = MaterialTheme.colorScheme.onSecondaryContainer
                 )
+            }
+
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = MaterialTheme.shapes.medium,
+                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Text(
+                            text = stringResource(R.string.tts_auto_read_answers_title),
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Text(
+                            text = stringResource(R.string.tts_auto_read_answers_desc),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(16.dp))
+                    Switch(
+                        checked = settings.autoReadResponsesAloud,
+                        onCheckedChange = { onSettingsChange(settings.copy(autoReadResponsesAloud = it)) }
+                    )
+                }
             }
 
             // ── TTS Engine Selection ────────────────────────────

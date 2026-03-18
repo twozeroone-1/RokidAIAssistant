@@ -3,10 +3,22 @@ package com.example.rokidphone.service
 import android.content.Context
 import android.util.Log
 import com.example.rokidphone.ai.provider.ProviderManager
+import com.example.rokidphone.data.AnswerMode
 import com.example.rokidphone.data.SettingsRepository
+import com.example.rokidphone.data.toAnythingLlmSettings
 import com.example.rokidphone.data.db.ConversationRepository
-import com.example.rokidphone.data.db.MessageRole
 import com.example.rokidphone.service.ai.AiServiceProvider
+import com.example.rokidphone.service.rag.AnythingLlmRagService
+import com.example.rokidphone.service.rag.AssistantInputType
+import com.example.rokidphone.service.rag.InputNormalizer
+import com.example.rokidphone.service.rag.RouteResolver
+import com.example.rokidphone.service.rag.RouteTarget
+import com.example.rokidphone.service.rag.buildAssistantMessageMetadata
+import com.example.rokidphone.service.rag.buildConversationMetadata
+import com.example.rokidphone.service.rag.buildConversationModelId
+import com.example.rokidphone.service.rag.buildConversationProviderId
+import com.example.rokidphone.service.rag.markDocsAssistantFailure
+import com.example.rokidphone.service.rag.markDocsAssistantHealthy
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 
@@ -34,6 +46,9 @@ class EnhancedAIService(
     private val providerManager = ProviderManager.getInstance(context)
     private val conversationRepository = ConversationRepository.getInstance(context)
     private val settingsRepository = SettingsRepository.getInstance(context)
+    private val routeResolver = RouteResolver()
+    private val ragService = AnythingLlmRagService()
+    private val inputNormalizer = InputNormalizer()
     
     /**
      * Send message and get response (auto-saves to conversation history)
@@ -45,6 +60,10 @@ class EnhancedAIService(
     ): Result<String> {
         return try {
             val settings = settingsRepository.getSettings()
+            val route = routeResolver.resolve(
+                settings = settings,
+                inputType = if (imageData != null) AssistantInputType.PHOTO else AssistantInputType.TEXT,
+            )
             
             // Save user message
             conversationRepository.addUserMessage(
@@ -53,22 +72,51 @@ class EnhancedAIService(
                 imagePath = null  // TODO: If there's an image, need to save to file first
             )
             
-            // Get AI service
-            val aiService = providerManager.getActiveService()
-                ?: return Result.failure(Exception("AI service not configured"))
-            
-            // Choose processing based on whether there's an image
-            val response = if (imageData != null) {
-                aiService.analyzeImage(imageData, userMessage)
-            } else {
-                aiService.chat(userMessage)
+            val response = when (route.target) {
+                RouteTarget.GENERAL_AI,
+                RouteTarget.GENERAL_AI_FALLBACK -> {
+                    val aiService = providerManager.getActiveService()
+                        ?: return Result.failure(Exception("AI service not configured"))
+                    if (imageData != null) {
+                        aiService.analyzeImage(imageData, userMessage)
+                    } else {
+                        aiService.chat(userMessage)
+                    }
+                }
+                RouteTarget.DOCS_RAG -> {
+                    ragService.answer(
+                        settings = settings.toAnythingLlmSettings(),
+                        question = inputNormalizer.normalizeText(userMessage),
+                    ).getOrElse { error ->
+                        markDocsAssistantFailure(settingsRepository, error.message ?: "Docs Assistant request failed.")
+                        return Result.failure(error)
+                    }.also {
+                        markDocsAssistantHealthy(settingsRepository, "AnythingLLM responded successfully.")
+                    }.answerText
+                }
+                RouteTarget.DOCS_PHOTO_CONTEXT_RAG -> {
+                    val aiService = providerManager.getActiveService()
+                        ?: return Result.failure(Exception("AI service not configured"))
+                    val sceneDescription = aiService.analyzeImage(imageData ?: ByteArray(0), "Describe this image for document lookup")
+                    ragService.answer(
+                        settings = settings.toAnythingLlmSettings(),
+                        question = inputNormalizer.combinePhotoContext(sceneDescription, userMessage),
+                    ).getOrElse { error ->
+                        markDocsAssistantFailure(settingsRepository, error.message ?: "Docs photo lookup failed.")
+                        return Result.failure(error)
+                    }.also {
+                        markDocsAssistantHealthy(settingsRepository, "AnythingLLM responded successfully.")
+                    }.answerText
+                }
             }
             
             // Save AI response
             conversationRepository.addAssistantMessage(
                 conversationId = conversationId,
                 content = response,
-                modelId = settings.aiModelId
+                modelId = buildConversationModelId(settings),
+                metadata = buildAssistantMessageMetadata(route, settings),
+                conversationMetadata = buildConversationMetadata(route, settings),
             )
             
             // Auto-generate title
@@ -95,6 +143,24 @@ class EnhancedAIService(
     ): Flow<StreamResult> = flow {
         try {
             val settings = settingsRepository.getSettings()
+            if (settings.answerMode == AnswerMode.DOCS) {
+                val result = ragService.answer(
+                    settings = settings.toAnythingLlmSettings(),
+                    question = inputNormalizer.normalizeText(userMessage),
+                )
+                result.onSuccess {
+                    markDocsAssistantHealthy(settingsRepository, "AnythingLLM responded successfully.")
+                }.onFailure {
+                    markDocsAssistantFailure(settingsRepository, it.message ?: "Docs Assistant request failed.")
+                }
+                emit(
+                    result.fold(
+                        onSuccess = { StreamResult.Completed(it.answerText) },
+                        onFailure = { StreamResult.Error(it.message ?: "Unknown error") },
+                    )
+                )
+                return@flow
+            }
             
             // Save user message
             conversationRepository.addUserMessage(
@@ -142,6 +208,20 @@ class EnhancedAIService(
      */
     suspend fun quickChat(message: String): Result<String> {
         return try {
+            val settings = settingsRepository.getSettings()
+            if (settings.answerMode == AnswerMode.DOCS) {
+                val result = ragService.answer(
+                    settings = settings.toAnythingLlmSettings(),
+                    question = inputNormalizer.normalizeText(message),
+                )
+                result.onSuccess {
+                    markDocsAssistantHealthy(settingsRepository, "AnythingLLM responded successfully.")
+                }.onFailure {
+                    markDocsAssistantFailure(settingsRepository, it.message ?: "Docs Assistant request failed.")
+                }
+                return result.map { it.answerText }
+            }
+
             val aiService = providerManager.getActiveService()
                 ?: return Result.failure(Exception("AI service not configured"))
             
@@ -199,8 +279,8 @@ class EnhancedAIService(
         return try {
             val settings = settingsRepository.getSettings()
             val conversation = conversationRepository.createConversation(
-                providerId = settings.aiProvider.name,
-                modelId = settings.aiModelId,
+                providerId = buildConversationProviderId(settings),
+                modelId = buildConversationModelId(settings),
                 title = title,
                 systemPrompt = settings.systemPrompt
             )

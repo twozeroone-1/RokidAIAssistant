@@ -130,6 +130,7 @@ class ApiSettingsTest {
         // 測試：預設 TTS 設定應使用 EDGE_TTS 引擎並自動偵測語音
         val settings = ApiSettings()
 
+        assertThat(settings.autoReadResponsesAloud).isTrue()
         assertThat(settings.ttsProvider).isEqualTo(TtsProvider.EDGE_TTS)
         assertThat(settings.ttsVoiceOverride).isEmpty()
         assertThat(settings.ttsSpeechRate).isEqualTo(1.0f)
@@ -142,6 +143,7 @@ class ApiSettingsTest {
     fun `copy with TTS provider preserves other TTS fields`() {
         // 測試：複製時更改 provider 應保留其他 TTS 欄位
         val original = ApiSettings(
+            autoReadResponsesAloud = false,
             ttsProvider = TtsProvider.EDGE_TTS,
             ttsVoiceOverride = "ko-KR-SunHiNeural",
             ttsSpeechRate = 1.5f,
@@ -152,6 +154,7 @@ class ApiSettingsTest {
         val copied = original.copy(ttsProvider = TtsProvider.SYSTEM_TTS)
 
         assertThat(copied.ttsProvider).isEqualTo(TtsProvider.SYSTEM_TTS)
+        assertThat(copied.autoReadResponsesAloud).isFalse()
         assertThat(copied.ttsVoiceOverride).isEqualTo("ko-KR-SunHiNeural")
         assertThat(copied.ttsSpeechRate).isEqualTo(1.5f)
         assertThat(copied.ttsPitch).isEqualTo(-0.2f)

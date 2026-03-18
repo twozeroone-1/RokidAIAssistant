@@ -293,6 +293,14 @@ private fun ConversationItem(
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
+                    conversation.metadata.routeBadge?.let { badge ->
+                        Spacer(modifier = Modifier.width(8.dp))
+                        AssistChip(
+                            onClick = {},
+                            enabled = false,
+                            label = { Text(badge.label) }
+                        )
+                    }
                 }
             }
             

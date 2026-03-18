@@ -708,6 +708,9 @@ data class ApiSettings(
     // AI Chat settings
     val aiProvider: AiProvider = AiProvider.GEMINI,
     val aiModelId: String = "gemini-2.5-flash",
+    val answerMode: AnswerMode = AnswerMode.GENERAL_AI,
+    val networkProfile: NetworkProfile = NetworkProfile.AUTO,
+    val docsProvider: DocsProvider = DocsProvider.ANYTHING_LLM,
     
     // API Keys for each provider
     val geminiApiKey: String = "",
@@ -727,6 +730,16 @@ data class ApiSettings(
     // Custom base URLs (for providers that support it)
     val customBaseUrl: String = "http://localhost:11434/v1/",
     val customModelName: String = "llama4",
+
+    // Docs assistant
+    val anythingLlmServerUrl: String = "",
+    val anythingLlmApiKey: String = "",
+    val anythingLlmWorkspaceSlug: String = "",
+    val anythingLlmRuntimeEnabled: Boolean = true,
+    val anythingLlmQueryMode: AnythingLlmQueryMode = AnythingLlmQueryMode.QUERY,
+    val anythingLlmLastHealthStatus: DocsHealthStatus = DocsHealthStatus.UNKNOWN,
+    val anythingLlmLastHealthMessage: String = "",
+    val anythingLlmRecentFailureCount: Int = 0,
     
     // Speech recognition settings
     val sttProvider: SttProvider = SttProvider.GEMINI,
@@ -817,6 +830,7 @@ data class ApiSettings(
     val systemPrompt: String = "",
     
     // TTS settings
+    val autoReadResponsesAloud: Boolean = true,
     val ttsProvider: TtsProvider = TtsProvider.EDGE_TTS,
     val ttsVoiceOverride: String = "",
     val ttsSpeechRate: Float = 1.0f,
@@ -900,6 +914,9 @@ data class ApiSettings(
      * Check if settings are valid
      */
     fun isValid(): Boolean {
+        if (answerMode == AnswerMode.DOCS) {
+            return validateForDocs() is SettingsValidationResult.Valid
+        }
         return when (aiProvider) {
             AiProvider.CUSTOM -> customBaseUrl.isNotBlank() && isValidUrl(customBaseUrl)
             AiProvider.BAIDU -> baiduApiKey.isNotBlank() && baiduSecretKey.isNotBlank()
@@ -940,6 +957,9 @@ data class ApiSettings(
      */
     fun getMissingApiKeys(): List<AiProvider> {
         val missing = mutableListOf<AiProvider>()
+        if (answerMode == AnswerMode.DOCS) {
+            return missing
+        }
         if (!isProviderConfigured(aiProvider)) {
             missing.add(aiProvider)
         }
@@ -962,7 +982,8 @@ data class ApiSettings(
                (baiduApiKey.isNotBlank() && baiduSecretKey.isNotBlank()) ||
                perplexityApiKey.isNotBlank() ||
                moonshotApiKey.isNotBlank() ||
-               (customApiKey.isNotBlank() || customBaseUrl.isNotBlank())
+               (customApiKey.isNotBlank() || customBaseUrl.isNotBlank()) ||
+               anythingLlmApiKey.isNotBlank()
     }
     
     /**
@@ -999,6 +1020,9 @@ sealed class SettingsValidationResult {
  * Validate settings for specific use case
  */
 fun ApiSettings.validateForChat(): SettingsValidationResult {
+    if (answerMode == AnswerMode.DOCS) {
+        return validateForDocs()
+    }
     return when {
         aiProvider == AiProvider.CUSTOM && !isValidUrl(customBaseUrl) -> 
             SettingsValidationResult.InvalidConfiguration("Invalid custom provider URL")
@@ -1008,6 +1032,25 @@ fun ApiSettings.validateForChat(): SettingsValidationResult {
             SettingsValidationResult.MissingApiKey(aiProvider)
         else -> SettingsValidationResult.Valid
     }
+}
+
+fun ApiSettings.validateForDocs(): SettingsValidationResult {
+    if (docsProvider != DocsProvider.ANYTHING_LLM) {
+        return SettingsValidationResult.InvalidConfiguration("Unsupported docs provider")
+    }
+    if (!anythingLlmRuntimeEnabled) {
+        return SettingsValidationResult.InvalidConfiguration("AnythingLLM runtime is disabled")
+    }
+    if (anythingLlmServerUrl.isBlank() || !isValidUrl(anythingLlmServerUrl)) {
+        return SettingsValidationResult.InvalidConfiguration("Invalid AnythingLLM server URL")
+    }
+    if (anythingLlmApiKey.isBlank()) {
+        return SettingsValidationResult.InvalidConfiguration("AnythingLLM API key is missing")
+    }
+    if (anythingLlmWorkspaceSlug.isBlank()) {
+        return SettingsValidationResult.InvalidConfiguration("AnythingLLM workspace slug is missing")
+    }
+    return SettingsValidationResult.Valid
 }
 
 /**

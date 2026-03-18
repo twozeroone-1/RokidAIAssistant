@@ -24,6 +24,7 @@ import coil.compose.rememberAsyncImagePainter
 import com.example.rokidcommon.protocol.ConnectionState
 import com.example.rokidphone.ConversationItem
 import com.example.rokidphone.R
+import com.example.rokidphone.data.DocsHealthStatus
 import com.example.rokidphone.data.AvailableModels
 import com.example.rokidphone.data.db.RecordingSource
 import com.example.rokidphone.data.db.RecordingState
@@ -45,6 +46,9 @@ fun HomeScreen(
     processingStatus: String?,
     currentModelId: String,
     conversations: List<ConversationItem>,
+    docsWorkspaceSlug: String = "",
+    docsHealthStatus: DocsHealthStatus = DocsHealthStatus.UNKNOWN,
+    docsHealthMessage: String = "",
     recordingState: RecordingState = RecordingState.Idle,
     onConnect: () -> Unit,
     onDisconnect: () -> Unit,
@@ -58,6 +62,7 @@ fun HomeScreen(
     onViewConversationHistory: () -> Unit = {},
     onViewGallery: () -> Unit = {},
     onViewRecordings: () -> Unit = {},
+    onViewDocsSettings: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val currentModel = AvailableModels.findModel(currentModelId)
@@ -199,8 +204,13 @@ fun HomeScreen(
                     modifier = Modifier.weight(1f)
                 )
                 
-                // Placeholder for future feature
-                Spacer(modifier = Modifier.weight(1f))
+                DocsAssistantCard(
+                    workspaceSlug = docsWorkspaceSlug,
+                    healthStatus = docsHealthStatus,
+                    healthMessage = docsHealthMessage,
+                    onClick = onViewDocsSettings,
+                    modifier = Modifier.weight(1f)
+                )
             }
         }
         
@@ -278,6 +288,67 @@ private fun QuickAccessCard(
                 style = MaterialTheme.typography.labelMedium,
                 fontWeight = FontWeight.Medium,
                 color = MaterialTheme.colorScheme.onPrimaryContainer
+            )
+        }
+    }
+}
+
+@Composable
+private fun DocsAssistantCard(
+    workspaceSlug: String,
+    healthStatus: DocsHealthStatus,
+    healthMessage: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Card(
+        onClick = onClick,
+        modifier = modifier,
+        shape = MaterialTheme.shapes.medium,
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.7f)
+        )
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Icon(
+                imageVector = Icons.Default.Description,
+                contentDescription = null,
+                modifier = Modifier.size(28.dp),
+                tint = MaterialTheme.colorScheme.secondary
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = stringResource(R.string.docs_assistant),
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.Medium,
+                color = MaterialTheme.colorScheme.onSecondaryContainer
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = when {
+                    workspaceSlug.isBlank() -> stringResource(R.string.docs_not_configured)
+                    healthStatus == DocsHealthStatus.HEALTHY -> workspaceSlug
+                    else -> workspaceSlug
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.9f),
+                maxLines = 1
+            )
+            Spacer(modifier = Modifier.height(2.dp))
+            Text(
+                text = when (healthStatus) {
+                    DocsHealthStatus.HEALTHY -> stringResource(R.string.docs_status_healthy)
+                    DocsHealthStatus.UNHEALTHY -> healthMessage.ifBlank { stringResource(R.string.docs_status_unhealthy) }
+                    DocsHealthStatus.UNKNOWN -> stringResource(R.string.docs_status_unknown)
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.75f),
+                maxLines = 2
             )
         }
     }
