@@ -94,8 +94,8 @@
     <string name="auto_analyze_recordings_description">녹음 중지 후 자동으로 AI에 전송하여 음성 인식 및 분석</string>
     <string name="push_chat_to_glasses">채팅을 안경으로 전송</string>
     <string name="push_chat_to_glasses_description">텍스트 채팅 AI 응답을 안경 화면에 전송</string>
-    <string name="push_recording_to_glasses">녹음을 안경으로 전송</string>
-    <string name="push_recording_to_glasses_description">휴대폰 녹음 결과(음성 인식 및 AI 응답)를 안경 화면에 전송</string>
+    <string name="push_recording_to_glasses">휴대폰 녹음 결과를 안경에 표시</string>
+    <string name="push_recording_to_glasses_description">휴대폰 녹음 결과(음성 인식 내용과 AI 응답)를 안경 화면에 표시</string>
     
     <!-- Language Settings -->
     <string name="language_settings">언어 설정</string>

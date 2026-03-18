@@ -94,8 +94,8 @@
     <string name="auto_analyze_recordings_description">Automatically send recordings to AI for transcription and analysis after stopping</string>
     <string name="push_chat_to_glasses">Send Chat to Glasses</string>
     <string name="push_chat_to_glasses_description">Push text chat AI responses to glasses display</string>
-    <string name="push_recording_to_glasses">Send Recording to Glasses</string>
-    <string name="push_recording_to_glasses_description">Push phone recording results (transcript and AI response) to glasses display</string>
+    <string name="push_recording_to_glasses">Show Recording Results on Glasses</string>
+    <string name="push_recording_to_glasses_description">Show phone recording results (transcript and AI response) on the glasses display</string>
     
     <!-- Language Settings -->
     <string name="language_settings">Language</string>
