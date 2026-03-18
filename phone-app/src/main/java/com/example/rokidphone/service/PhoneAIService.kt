@@ -14,12 +14,15 @@ import com.example.rokidcommon.protocol.photo.PhotoTransferState
 import com.example.rokidphone.BuildConfig
 import com.example.rokidphone.MainActivity
 import com.example.rokidphone.R
+import com.example.rokidphone.data.AnswerMode
 import com.example.rokidphone.data.AiProvider
 import com.example.rokidphone.data.ApiSettings
 import com.example.rokidphone.data.AvailableModels
 import com.example.rokidphone.data.SettingsRepository
+import com.example.rokidphone.data.SettingsValidationResult
 import com.example.rokidphone.data.db.ConversationRepository
 import com.example.rokidphone.data.db.RecordingRepository
+import com.example.rokidphone.data.toAnythingLlmSettings
 import com.example.rokidphone.service.ai.AiServiceFactory
 import com.example.rokidphone.service.ai.AiServiceProvider
 import com.example.rokidphone.service.ai.GeminiLiveSession
@@ -28,10 +31,25 @@ import com.example.rokidphone.service.stt.SttProvider
 import com.example.rokidphone.service.stt.SttService
 import com.example.rokidphone.service.stt.SttServiceFactory
 import com.example.rokidphone.data.toSttCredentials
+import com.example.rokidphone.data.validateForDocs
 import com.example.rokidphone.service.ServiceBridge.notifyApiKeyMissing
 import com.example.rokidphone.service.photo.PhotoData
 import com.example.rokidphone.service.photo.PhotoRepository
 import com.example.rokidphone.service.photo.ReceivedPhoto
+import com.example.rokidphone.service.rag.AnythingLlmRagService
+import com.example.rokidphone.service.rag.AssistantInputType
+import com.example.rokidphone.service.rag.InputNormalizer
+import com.example.rokidphone.service.rag.RouteDecision
+import com.example.rokidphone.service.rag.RouteResolver
+import com.example.rokidphone.service.rag.RouteTarget
+import com.example.rokidphone.service.rag.SourcePreview
+import com.example.rokidphone.service.rag.buildAssistantMessageMetadata
+import com.example.rokidphone.service.rag.buildConversationMetadata
+import com.example.rokidphone.service.rag.buildConversationModelId
+import com.example.rokidphone.service.rag.buildConversationProviderId
+import com.example.rokidphone.service.rag.buildGlassesAssistantResponse
+import com.example.rokidphone.service.rag.markDocsAssistantFailure
+import com.example.rokidphone.service.rag.markDocsAssistantHealthy
 import com.rokid.cxr.client.utils.ValueUtil
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -54,6 +72,16 @@ class PhoneAIService : Service() {
     }
     
     private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    private val routeResolver = RouteResolver()
+    private val ragService = AnythingLlmRagService()
+    private val inputNormalizer = InputNormalizer()
+
+    private data class RoutedAssistantResult(
+        val text: String,
+        val route: RouteDecision,
+        val sources: List<SourcePreview> = emptyList(),
+        val modelId: String,
+    )
     
     // AI service (supports multiple providers)
     private var aiService: AiServiceProvider? = null
@@ -362,15 +390,12 @@ class PhoneAIService : Service() {
             return
         }
         
-        // Check API key before sending capture command
-        val settingsRepository = SettingsRepository.getInstance(this)
-        val apiKey = settingsRepository.getSettings().geminiApiKey
-        if (apiKey.isBlank()) {
-            Log.e(TAG, "API key is not configured, aborting photo capture")
+        if (aiService == null) {
+            Log.e(TAG, "AI service is not configured, aborting photo capture")
             // Notify UI to show API key warning dialog
             notifyApiKeyMissing()
             // Also send error message to glasses
-            bluetoothManager?.sendMessage(Message.aiError("API key not configured. Please set up an API key in Settings."))
+            bluetoothManager?.sendMessage(Message.aiError("AI service is not configured. Please set up an AI provider in Settings."))
             return
         }
         
@@ -450,12 +475,9 @@ class PhoneAIService : Service() {
             return
         }
         
-        // Check API key before triggering photo capture
-        val settingsRepository = SettingsRepository.getInstance(this)
-        val apiKey = settingsRepository.getSettings().geminiApiKey
-        if (apiKey.isBlank()) {
-            Log.e(TAG, "API key is not configured, aborting photo capture")
-            bluetoothManager?.sendMessage(Message.aiError("API key not configured. Please set up an API key in Settings."))
+        if (aiService == null) {
+            Log.e(TAG, "AI service is not configured, aborting photo capture")
+            bluetoothManager?.sendMessage(Message.aiError("AI service is not configured. Please set up an AI provider in Settings."))
             return
         }
         
@@ -658,6 +680,7 @@ class PhoneAIService : Service() {
         try {
             // Get photo bytes for AI analysis
             val photoBytes = photoRepository?.getPhotoBytes(photoData) ?: return
+            val settings = SettingsRepository.getInstance(this).getSettings()
             
             Log.d(TAG, "Analyzing photo with AI: ${photoBytes.size} bytes")
             
@@ -669,24 +692,42 @@ class PhoneAIService : Service() {
                 payload = getString(R.string.analyzing_photo)
             ))
             
-            // Use AI service to analyze the image with localized prompt
-            val analysisResult = aiService?.analyzeImage(
-                photoBytes, 
-                getString(R.string.image_analysis_prompt)
-            ) ?: getString(R.string.ai_analysis_unavailable)
-            
-            // Clean markdown for glasses display
-            val cleanedResult = cleanMarkdown(analysisResult)
+            // Save photo request into history so docs/general routing is visible in the existing conversation log.
+            val photoPrompt = if (settings.answerMode == AnswerMode.DOCS) {
+                "Photo input"
+            } else {
+                "Photo analysis"
+            }
+            saveUserMessage(photoPrompt, imagePath = photoData.filePath)
+            ServiceBridge.emitConversation(Message(
+                type = MessageType.USER_TRANSCRIPT,
+                payload = photoPrompt
+            ))
+
+            val routedResult = resolvePhotoAssistantResponse(settings, photoBytes)
+            val cleanedResult = routedResult.text
             
             Log.d(TAG, "Photo analysis result: $cleanedResult")
             
             // Update photo data with analysis result
             photoData.analysisResult = cleanedResult
+            saveAssistantMessage(
+                content = cleanedResult,
+                modelId = routedResult.modelId,
+                route = routedResult.route,
+                sources = routedResult.sources,
+                settings = settings,
+            )
             
             // Send result to glasses
             bluetoothManager?.sendMessage(Message(
                 type = MessageType.PHOTO_ANALYSIS_RESULT,
-                payload = cleanedResult
+                payload = buildGlassesAssistantResponse(
+                    answerText = cleanedResult,
+                    route = routedResult.route,
+                    sources = routedResult.sources,
+                    normalizer = inputNormalizer,
+                )
             ))
             
             // Notify phone UI
@@ -696,7 +737,7 @@ class PhoneAIService : Service() {
             ))
             
             // TTS voice playback
-            ttsService?.speak(cleanedResult) { }
+            maybeSpeakAssistantResponse(settings, cleanedResult)
             
         } catch (e: Exception) {
             Log.e(TAG, "Failed to analyze photo", e)
@@ -781,17 +822,28 @@ class PhoneAIService : Service() {
             // 4. Notify thinking
             bluetoothManager?.sendMessage(Message.aiProcessing(getString(R.string.thinking)))
             
-            // 5. AI conversation (using main AI service)
-            Log.d(TAG, "Getting AI response...")
-            val rawAiResponse = aiService?.chat(transcript) ?: "Sorry, an error occurred while processing."
-            
-            // Clean markdown formatting for better display on glasses
-            val aiResponse = cleanMarkdown(rawAiResponse)
+            // 5. AI conversation / Docs routing
+            Log.d(TAG, "Getting assistant response...")
+            val routedResult = resolveTextAssistantResponse(
+                settings = settings,
+                text = transcript,
+                inputType = AssistantInputType.VOICE,
+            )
+            val aiResponse = routedResult.text
             
             Log.d(TAG, "AI response: $aiResponse")
             
             // 6. Send AI response to glasses and phone UI
-            bluetoothManager?.sendMessage(Message.aiResponseText(aiResponse))
+            bluetoothManager?.sendMessage(
+                Message.aiResponseText(
+                    buildGlassesAssistantResponse(
+                        answerText = aiResponse,
+                        route = routedResult.route,
+                        sources = routedResult.sources,
+                        normalizer = inputNormalizer,
+                    )
+                )
+            )
             
             ServiceBridge.emitConversation(Message(
                 type = MessageType.AI_RESPONSE_TEXT,
@@ -799,7 +851,13 @@ class PhoneAIService : Service() {
             ))
             
             // 6.1 Save AI response to database for history
-            saveAssistantMessage(aiResponse, settings.aiModelId)
+            saveAssistantMessage(
+                content = aiResponse,
+                modelId = routedResult.modelId,
+                route = routedResult.route,
+                sources = routedResult.sources,
+                settings = settings,
+            )
             
             // 6.2 Save glasses recording to database (with transcript and AI response)
             try {
@@ -807,8 +865,8 @@ class PhoneAIService : Service() {
                     audioData = audioData,
                     transcript = transcript,
                     aiResponse = aiResponse,
-                    providerId = settings.aiProvider.name,
-                    modelId = settings.aiModelId
+                    providerId = buildConversationProviderId(settings),
+                    modelId = routedResult.modelId
                 )
                 Log.d(TAG, "Glasses recording saved to database")
             } catch (e: Exception) {
@@ -816,7 +874,7 @@ class PhoneAIService : Service() {
             }
             
             // 7. TTS voice playback (optional)
-            ttsService?.speak(aiResponse) { }
+            maybeSpeakAssistantResponse(settings, aiResponse)
             
         } catch (e: kotlin.coroutines.cancellation.CancellationException) {
             // Service is being stopped, don't treat this as an error
@@ -1048,10 +1106,14 @@ class PhoneAIService : Service() {
                 payload = getString(R.string.thinking)
             ))
             
-            // 4. AI conversation
-            Log.d(TAG, "Getting AI response for phone recording...")
-            val rawAiResponse = aiService?.chat(transcript) ?: getString(R.string.ai_analysis_unavailable)
-            val aiResponse = cleanMarkdown(rawAiResponse)
+            // 4. AI conversation / Docs routing
+            Log.d(TAG, "Getting assistant response for phone recording...")
+            val routedResult = resolveTextAssistantResponse(
+                settings = settings,
+                text = transcript,
+                inputType = AssistantInputType.VOICE,
+            )
+            val aiResponse = routedResult.text
             
             Log.d(TAG, "Phone recording AI response: $aiResponse")
             
@@ -1059,14 +1121,23 @@ class PhoneAIService : Service() {
             recordingRepository?.updateAiResponse(
                 id = recordingId,
                 response = aiResponse,
-                providerId = settings.aiProvider.name,
-                modelId = settings.aiModelId
+                providerId = buildConversationProviderId(settings),
+                modelId = routedResult.modelId
             )
             
             // 6. Send result to glasses (if enabled) and phone UI
             if (settings.pushRecordingToGlasses) {
                 bluetoothManager?.sendMessage(Message(type = MessageType.USER_TRANSCRIPT, payload = transcript))
-                bluetoothManager?.sendMessage(Message.aiResponseText(aiResponse))
+                bluetoothManager?.sendMessage(
+                    Message.aiResponseText(
+                        buildGlassesAssistantResponse(
+                            answerText = aiResponse,
+                            route = routedResult.route,
+                            sources = routedResult.sources,
+                            normalizer = inputNormalizer,
+                        )
+                    )
+                )
             }
             
             ServiceBridge.emitConversation(Message(
@@ -1080,10 +1151,16 @@ class PhoneAIService : Service() {
             
             // 7. Save to conversation history
             saveUserMessage(transcript)
-            saveAssistantMessage(aiResponse, settings.aiModelId)
+            saveAssistantMessage(
+                content = aiResponse,
+                modelId = routedResult.modelId,
+                route = routedResult.route,
+                sources = routedResult.sources,
+                settings = settings,
+            )
             
             // 8. TTS playback (optional)
-            ttsService?.speak(aiResponse) { }
+            maybeSpeakAssistantResponse(settings, aiResponse)
             
             Log.d(TAG, "Phone recording processed successfully: $recordingId")
             
@@ -1177,6 +1254,14 @@ class PhoneAIService : Service() {
         }
         ServiceBridge.emitConversation(Message(type = MessageType.AI_ERROR, payload = message))
     }
+
+    private fun maybeSpeakAssistantResponse(settings: ApiSettings, text: String) {
+        if (!settings.autoReadResponsesAloud) {
+            Log.d(TAG, "Skipping automatic TTS playback because auto-read is disabled")
+            return
+        }
+        ttsService?.speak(text) { }
+    }
     
     /**
      * Notify processing error with best-effort error propagation
@@ -1191,6 +1276,119 @@ class PhoneAIService : Service() {
             ServiceBridge.emitConversation(Message(type = MessageType.AI_ERROR, payload = errorMsg))
         } catch (e: Exception) {
             Log.w(TAG, "Failed to notify error state", e)
+        }
+    }
+
+    private suspend fun resolveTextAssistantResponse(
+        settings: ApiSettings,
+        text: String,
+        inputType: AssistantInputType,
+    ): RoutedAssistantResult {
+        val route = routeResolver.resolve(settings, inputType)
+        val normalizedText = inputNormalizer.normalizeText(text)
+
+        return when (route.target) {
+            RouteTarget.GENERAL_AI -> {
+                val responseText = aiService?.chat(normalizedText)
+                    ?: throw IllegalStateException("AI service not configured")
+                RoutedAssistantResult(
+                    text = cleanMarkdown(responseText),
+                    route = route,
+                    modelId = buildConversationModelId(settings),
+                )
+            }
+
+            RouteTarget.DOCS_RAG -> {
+                val validation = settings.validateForDocs()
+                if (validation !is SettingsValidationResult.Valid) {
+                    throw IllegalStateException(validation.toDocsErrorMessage())
+                }
+
+                val ragAnswer = ragService.answer(
+                    settings = settings.toAnythingLlmSettings(),
+                    question = normalizedText,
+                ).getOrElse { error ->
+                    markDocsAssistantFailure(settingsRepository = SettingsRepository.getInstance(this), message = error.message ?: "Docs Assistant request failed.")
+                    throw error
+                }
+                markDocsAssistantHealthy(
+                    settingsRepository = SettingsRepository.getInstance(this),
+                    message = "AnythingLLM responded from ${settings.anythingLlmWorkspaceSlug.ifBlank { "workspace" }}.",
+                )
+
+                RoutedAssistantResult(
+                    text = cleanMarkdown(ragAnswer.answerText),
+                    route = route,
+                    sources = ragAnswer.sources,
+                    modelId = buildConversationModelId(settings),
+                )
+            }
+
+            else -> throw IllegalStateException("Unsupported route for text input")
+        }
+    }
+
+    private suspend fun resolvePhotoAssistantResponse(
+        settings: ApiSettings,
+        photoBytes: ByteArray,
+    ): RoutedAssistantResult {
+        val route = routeResolver.resolve(settings, AssistantInputType.PHOTO)
+        return when (route.target) {
+            RouteTarget.GENERAL_AI,
+            RouteTarget.GENERAL_AI_FALLBACK -> {
+                val responseText = aiService?.analyzeImage(
+                    photoBytes,
+                    getString(R.string.image_analysis_prompt)
+                ) ?: throw IllegalStateException("AI service not configured")
+
+                RoutedAssistantResult(
+                    text = cleanMarkdown(responseText),
+                    route = route,
+                    modelId = buildConversationModelId(settings),
+                )
+            }
+
+            RouteTarget.DOCS_PHOTO_CONTEXT_RAG -> {
+                val validation = settings.validateForDocs()
+                if (validation !is SettingsValidationResult.Valid) {
+                    throw IllegalStateException(validation.toDocsErrorMessage())
+                }
+
+                val sceneDescription = aiService?.analyzeImage(
+                    photoBytes,
+                    "Describe this image for document lookup. Focus on visible equipment, UI state, text, and user intent."
+                ) ?: throw IllegalStateException("AI service not configured")
+
+                val ragAnswer = ragService.answer(
+                    settings = settings.toAnythingLlmSettings(),
+                    question = inputNormalizer.combinePhotoContext(sceneDescription),
+                ).getOrElse { error ->
+                    markDocsAssistantFailure(settingsRepository = SettingsRepository.getInstance(this), message = error.message ?: "Docs photo lookup failed.")
+                    throw error
+                }
+                markDocsAssistantHealthy(
+                    settingsRepository = SettingsRepository.getInstance(this),
+                    message = "AnythingLLM responded from ${settings.anythingLlmWorkspaceSlug.ifBlank { "workspace" }}.",
+                )
+
+                RoutedAssistantResult(
+                    text = cleanMarkdown(ragAnswer.answerText),
+                    route = route,
+                    sources = ragAnswer.sources,
+                    modelId = buildConversationModelId(settings),
+                )
+            }
+
+            RouteTarget.DOCS_RAG -> throw IllegalStateException("Unsupported route for photo input")
+        }
+    }
+
+    private fun SettingsValidationResult.toDocsErrorMessage(): String {
+        return when (this) {
+            is SettingsValidationResult.InvalidConfiguration -> message
+            is SettingsValidationResult.MissingApiKey -> "Required API key is missing."
+            is SettingsValidationResult.MissingSpeechService -> "Speech service is not configured."
+            SettingsValidationResult.Valid -> "Settings are valid."
         }
     }
     
@@ -1240,8 +1438,8 @@ class PhoneAIService : Service() {
                     val title = getString(R.string.voice_session_title, dateFormat.format(java.util.Date()))
                     
                     val conversation = conversationRepository?.createConversation(
-                        providerId = settings.aiProvider.name,
-                        modelId = settings.aiModelId,
+                        providerId = buildConversationProviderId(settings),
+                        modelId = buildConversationModelId(settings),
                         title = title,
                         systemPrompt = settings.systemPrompt
                     )
@@ -1258,10 +1456,19 @@ class PhoneAIService : Service() {
     /**
      * Save user message to database
      */
-    private suspend fun saveUserMessage(content: String) {
+    private suspend fun saveUserMessage(
+        content: String,
+        imagePath: String? = null,
+    ) {
+        val settings = SettingsRepository.getInstance(this).getSettings()
+        ensureVoiceConversationSession(settings)
         currentVoiceConversationId?.let { conversationId ->
             try {
-                conversationRepository?.addUserMessage(conversationId, content)
+                conversationRepository?.addUserMessage(
+                    conversationId = conversationId,
+                    content = content,
+                    imagePath = imagePath,
+                )
                 Log.d(TAG, "Saved user message to conversation: $conversationId")
             } catch (e: Exception) {
                 Log.e(TAG, "Error saving user message", e)
@@ -1272,13 +1479,22 @@ class PhoneAIService : Service() {
     /**
      * Save AI response to database
      */
-    private suspend fun saveAssistantMessage(content: String, modelId: String?) {
+    private suspend fun saveAssistantMessage(
+        content: String,
+        modelId: String?,
+        route: RouteDecision? = null,
+        sources: List<SourcePreview> = emptyList(),
+        settings: ApiSettings = SettingsRepository.getInstance(this).getSettings(),
+    ) {
+        ensureVoiceConversationSession(settings)
         currentVoiceConversationId?.let { conversationId ->
             try {
                 conversationRepository?.addAssistantMessage(
                     conversationId = conversationId,
                     content = content,
-                    modelId = modelId
+                    modelId = modelId,
+                    metadata = route?.let { buildAssistantMessageMetadata(it, settings, sources) },
+                    conversationMetadata = route?.let { buildConversationMetadata(it, settings) },
                 )
                 Log.d(TAG, "Saved assistant message to conversation: $conversationId")
             } catch (e: Exception) {

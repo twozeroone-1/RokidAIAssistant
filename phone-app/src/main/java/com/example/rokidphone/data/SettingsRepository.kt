@@ -23,6 +23,9 @@ class SettingsRepository(private val context: Context) {
         // Keys for general settings
         private const val KEY_AI_PROVIDER = "ai_provider"
         private const val KEY_AI_MODEL = "ai_model"
+        private const val KEY_ANSWER_MODE = "answer_mode"
+        private const val KEY_NETWORK_PROFILE = "network_profile"
+        private const val KEY_DOCS_PROVIDER = "docs_provider"
         private const val KEY_STT_PROVIDER = "stt_provider"
         private const val KEY_SPEECH_LANGUAGE = "speech_language"
         private const val KEY_RESPONSE_LANGUAGE = "response_language"
@@ -46,6 +49,16 @@ class SettingsRepository(private val context: Context) {
         // Keys for custom provider settings
         private const val KEY_CUSTOM_BASE_URL = "custom_base_url"
         private const val KEY_CUSTOM_MODEL_NAME = "custom_model_name"
+
+        // Docs assistant keys
+        private const val KEY_ANYTHING_LLM_SERVER_URL = "anythingllm_server_url"
+        private const val KEY_ANYTHING_LLM_API_KEY = "anythingllm_api_key"
+        private const val KEY_ANYTHING_LLM_WORKSPACE_SLUG = "anythingllm_workspace_slug"
+        private const val KEY_ANYTHING_LLM_RUNTIME_ENABLED = "anythingllm_runtime_enabled"
+        private const val KEY_ANYTHING_LLM_QUERY_MODE = "anythingllm_query_mode"
+        private const val KEY_ANYTHING_LLM_LAST_HEALTH_STATUS = "anythingllm_last_health_status"
+        private const val KEY_ANYTHING_LLM_LAST_HEALTH_MESSAGE = "anythingllm_last_health_message"
+        private const val KEY_ANYTHING_LLM_RECENT_FAILURE_COUNT = "anythingllm_recent_failure_count"
         
         // Keys for recording settings
         private const val KEY_AUTO_ANALYZE_RECORDINGS = "auto_analyze_recordings"
@@ -53,6 +66,7 @@ class SettingsRepository(private val context: Context) {
         private const val KEY_PUSH_RECORDING_TO_GLASSES = "push_recording_to_glasses"
         
         // Keys for TTS settings
+        private const val KEY_AUTO_READ_RESPONSES_ALOUD = "auto_read_responses_aloud"
         private const val KEY_TTS_PROVIDER = "tts_provider"
         private const val KEY_TTS_VOICE_OVERRIDE = "tts_voice_override"
         private const val KEY_TTS_SPEECH_RATE = "tts_speech_rate"
@@ -77,11 +91,10 @@ class SettingsRepository(private val context: Context) {
         }
     }
     
-    private val masterKey = MasterKey.Builder(context, MasterKey.DEFAULT_MASTER_KEY_ALIAS)
-        .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
-        .build()
-    
     private val prefs: SharedPreferences = try {
+        val masterKey = MasterKey.Builder(context, MasterKey.DEFAULT_MASTER_KEY_ALIAS)
+            .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
+            .build()
         EncryptedSharedPreferences.create(
             context,
             PREFS_NAME,
@@ -127,6 +140,15 @@ class SettingsRepository(private val context: Context) {
                 prefs.getString(KEY_AI_PROVIDER, AiProvider.GEMINI.name) ?: AiProvider.GEMINI.name
             ),
             aiModelId = prefs.getString(KEY_AI_MODEL, "gemini-2.5-flash") ?: "gemini-2.5-flash",
+            answerMode = AnswerMode.valueOf(
+                prefs.getString(KEY_ANSWER_MODE, AnswerMode.GENERAL_AI.name) ?: AnswerMode.GENERAL_AI.name
+            ),
+            networkProfile = NetworkProfile.valueOf(
+                prefs.getString(KEY_NETWORK_PROFILE, NetworkProfile.AUTO.name) ?: NetworkProfile.AUTO.name
+            ),
+            docsProvider = DocsProvider.valueOf(
+                prefs.getString(KEY_DOCS_PROVIDER, DocsProvider.ANYTHING_LLM.name) ?: DocsProvider.ANYTHING_LLM.name
+            ),
             geminiApiKey = prefs.getString(KEY_GEMINI_API_KEY, "") ?: "",
             openaiApiKey = prefs.getString(KEY_OPENAI_API_KEY, "") ?: "",
             anthropicApiKey = prefs.getString(KEY_ANTHROPIC_API_KEY, "") ?: "",
@@ -143,6 +165,20 @@ class SettingsRepository(private val context: Context) {
             customBaseUrl = prefs.getString(KEY_CUSTOM_BASE_URL, "http://localhost:11434/v1/") 
                 ?: "http://localhost:11434/v1/",
             customModelName = prefs.getString(KEY_CUSTOM_MODEL_NAME, "llama4") ?: "llama4",
+            anythingLlmServerUrl = prefs.getString(KEY_ANYTHING_LLM_SERVER_URL, "") ?: "",
+            anythingLlmApiKey = prefs.getString(KEY_ANYTHING_LLM_API_KEY, "") ?: "",
+            anythingLlmWorkspaceSlug = prefs.getString(KEY_ANYTHING_LLM_WORKSPACE_SLUG, "") ?: "",
+            anythingLlmRuntimeEnabled = prefs.getBoolean(KEY_ANYTHING_LLM_RUNTIME_ENABLED, true),
+            anythingLlmQueryMode = AnythingLlmQueryMode.valueOf(
+                prefs.getString(KEY_ANYTHING_LLM_QUERY_MODE, AnythingLlmQueryMode.QUERY.name)
+                    ?: AnythingLlmQueryMode.QUERY.name
+            ),
+            anythingLlmLastHealthStatus = DocsHealthStatus.valueOf(
+                prefs.getString(KEY_ANYTHING_LLM_LAST_HEALTH_STATUS, DocsHealthStatus.UNKNOWN.name)
+                    ?: DocsHealthStatus.UNKNOWN.name
+            ),
+            anythingLlmLastHealthMessage = prefs.getString(KEY_ANYTHING_LLM_LAST_HEALTH_MESSAGE, "") ?: "",
+            anythingLlmRecentFailureCount = prefs.getInt(KEY_ANYTHING_LLM_RECENT_FAILURE_COUNT, 0),
             sttProvider = SttProvider.fromName(
                 prefs.getString(KEY_STT_PROVIDER, SttProvider.GEMINI.name) ?: SttProvider.GEMINI.name
             ),
@@ -158,6 +194,7 @@ class SettingsRepository(private val context: Context) {
                 Locale.getDefault().toLanguageTag()
             ) ?: Locale.getDefault().toLanguageTag(),
             systemPrompt = systemPrompt,
+            autoReadResponsesAloud = prefs.getBoolean(KEY_AUTO_READ_RESPONSES_ALOUD, true),
             ttsProvider = TtsProvider.fromName(
                 prefs.getString(KEY_TTS_PROVIDER, TtsProvider.EDGE_TTS.name) ?: TtsProvider.EDGE_TTS.name
             ),
@@ -210,6 +247,9 @@ class SettingsRepository(private val context: Context) {
         prefs.edit().apply {
             putString(KEY_AI_PROVIDER, settings.aiProvider.name)
             putString(KEY_AI_MODEL, settings.aiModelId)
+            putString(KEY_ANSWER_MODE, settings.answerMode.name)
+            putString(KEY_NETWORK_PROFILE, settings.networkProfile.name)
+            putString(KEY_DOCS_PROVIDER, settings.docsProvider.name)
             putString(KEY_GEMINI_API_KEY, settings.geminiApiKey)
             putString(KEY_OPENAI_API_KEY, settings.openaiApiKey)
             putString(KEY_ANTHROPIC_API_KEY, settings.anthropicApiKey)
@@ -225,10 +265,19 @@ class SettingsRepository(private val context: Context) {
             putString(KEY_CUSTOM_API_KEY, settings.customApiKey)
             putString(KEY_CUSTOM_BASE_URL, settings.customBaseUrl)
             putString(KEY_CUSTOM_MODEL_NAME, settings.customModelName)
+            putString(KEY_ANYTHING_LLM_SERVER_URL, settings.anythingLlmServerUrl)
+            putString(KEY_ANYTHING_LLM_API_KEY, settings.anythingLlmApiKey)
+            putString(KEY_ANYTHING_LLM_WORKSPACE_SLUG, settings.anythingLlmWorkspaceSlug)
+            putBoolean(KEY_ANYTHING_LLM_RUNTIME_ENABLED, settings.anythingLlmRuntimeEnabled)
+            putString(KEY_ANYTHING_LLM_QUERY_MODE, settings.anythingLlmQueryMode.name)
+            putString(KEY_ANYTHING_LLM_LAST_HEALTH_STATUS, settings.anythingLlmLastHealthStatus.name)
+            putString(KEY_ANYTHING_LLM_LAST_HEALTH_MESSAGE, settings.anythingLlmLastHealthMessage)
+            putInt(KEY_ANYTHING_LLM_RECENT_FAILURE_COUNT, settings.anythingLlmRecentFailureCount)
             putString(KEY_STT_PROVIDER, settings.sttProvider.name)
             putString(KEY_SPEECH_LANGUAGE, settings.speechLanguage)
             putString(KEY_RESPONSE_LANGUAGE, settings.responseLanguage)
             putString(KEY_SYSTEM_PROMPT, settings.systemPrompt)
+            putBoolean(KEY_AUTO_READ_RESPONSES_ALOUD, settings.autoReadResponsesAloud)
             putString(KEY_TTS_PROVIDER, settings.ttsProvider.name)
             putString(KEY_TTS_VOICE_OVERRIDE, settings.ttsVoiceOverride)
             putFloat(KEY_TTS_SPEECH_RATE, settings.ttsSpeechRate)
@@ -261,6 +310,30 @@ class SettingsRepository(private val context: Context) {
     
     fun updateAiModel(modelId: String) {
         saveSettings(getSettings().copy(aiModelId = modelId))
+    }
+
+    fun updateAnswerMode(answerMode: AnswerMode) {
+        saveSettings(getSettings().copy(answerMode = answerMode))
+    }
+
+    fun updateNetworkProfile(networkProfile: NetworkProfile) {
+        saveSettings(getSettings().copy(networkProfile = networkProfile))
+    }
+
+    fun updateAnythingLlmServerUrl(serverUrl: String) {
+        saveSettings(getSettings().copy(anythingLlmServerUrl = serverUrl))
+    }
+
+    fun updateAnythingLlmApiKey(apiKey: String) {
+        saveSettings(getSettings().copy(anythingLlmApiKey = apiKey))
+    }
+
+    fun updateAnythingLlmWorkspaceSlug(workspaceSlug: String) {
+        saveSettings(getSettings().copy(anythingLlmWorkspaceSlug = workspaceSlug))
+    }
+
+    fun updateAnythingLlmRuntimeEnabled(enabled: Boolean) {
+        saveSettings(getSettings().copy(anythingLlmRuntimeEnabled = enabled))
     }
     
     fun updateGeminiApiKey(apiKey: String) {
@@ -329,6 +402,10 @@ class SettingsRepository(private val context: Context) {
     
     fun updateSystemPrompt(prompt: String) {
         saveSettings(getSettings().copy(systemPrompt = prompt))
+    }
+
+    fun updateAutoReadResponsesAloud(enabled: Boolean) {
+        saveSettings(getSettings().copy(autoReadResponsesAloud = enabled))
     }
     
     /**

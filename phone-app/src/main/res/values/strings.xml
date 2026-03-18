@@ -65,6 +65,8 @@
     <string name="tts_settings_subtitle">Voice engine, speed, pitch…</string>
     <string name="tts_settings_description">Configure text-to-speech output. Edge TTS provides high-quality neural voices for natural-sounding speech in many languages.</string>
     <string name="tts_settings_note">Edge TTS requires an internet connection. If unavailable, the app will automatically fall back to the Android system TTS engine.</string>
+    <string name="tts_auto_read_answers_title">Read answers aloud</string>
+    <string name="tts_auto_read_answers_desc">Automatically play assistant answers over TTS. Test Voice still works when this is off.</string>
     <string name="tts_engine">TTS Engine</string>
     <string name="tts_provider_edge">Microsoft Edge TTS</string>
     <string name="tts_provider_edge_desc">High-quality neural voices (requires internet)</string>
@@ -494,5 +496,34 @@
     <string name="recordings_status_analyzing">Analyzing</string>
     <string name="recordings_status_analyzed">Analyzed</string>
     <string name="recordings_status_error">Error</string>
+
+    <!-- Docs Assistant -->
+    <string name="docs_assistant">Docs Assistant</string>
+    <string name="default_answer_mode">Default Answer Mode</string>
+    <string name="general_ai_mode">General AI</string>
+    <string name="docs_mode">Docs</string>
+    <string name="docs_mode_enabled">Docs mode enabled</string>
+    <string name="general_mode_enabled">General AI mode enabled</string>
+    <string name="docs_mode_hint">In Docs mode, voice and text are sent to AnythingLLM. Photo input uses General AI on Slow and Auto-unhealthy profiles.</string>
+    <string name="network_profile">Network Profile</string>
+    <string name="network_fast">Fast</string>
+    <string name="network_slow">Slow</string>
+    <string name="network_auto">Auto</string>
+    <string name="network_auto_hint">Auto starts conservatively and only upgrades to Fast after AnythingLLM health checks succeed.</string>
+    <string name="anythingllm_settings_title">AnythingLLM</string>
+    <string name="anythingllm_server_url">Server URL</string>
+    <string name="anythingllm_api_key">API Key</string>
+    <string name="anythingllm_workspace_slug">Workspace Slug</string>
+    <string name="anythingllm_workspace_label">Workspace: %s</string>
+    <string name="docs_runtime_enabled">Runtime Enabled</string>
+    <string name="docs_runtime_enabled_hint">Disable only if you want to keep the configuration saved without routing docs traffic.</string>
+    <string name="docs_status_unknown">Health unknown</string>
+    <string name="docs_status_healthy">Healthy</string>
+    <string name="docs_status_unhealthy">Needs attention</string>
+    <string name="docs_not_configured">Not configured</string>
+    <string name="docs_behavior_title">Routing Behavior</string>
+    <string name="docs_behavior_text">Text and voice use AnythingLLM in Docs mode. Photo input uses General AI on Slow or unhealthy Auto, and only runs photo-context RAG when Docs mode is paired with a Fast profile.</string>
+    <string name="sources_label">Sources</string>
+    <string name="connection_failed_generic">Connection failed.</string>
 
 </resources>

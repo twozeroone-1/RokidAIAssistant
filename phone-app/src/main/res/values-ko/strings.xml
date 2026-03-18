@@ -65,6 +65,8 @@
     <string name="tts_settings_subtitle">음성 엔진, 속도, 피치…</string>
     <string name="tts_settings_description">텍스트 음성 변환(TTS) 출력을 설정합니다. Edge TTS는 다양한 언어에서 자연스러운 음성을 제공하는 고품질 신경망 음성을 지원합니다.</string>
     <string name="tts_settings_note">Edge TTS는 인터넷 연결이 필요합니다. 사용 불가 시 Android 시스템 TTS 엔진으로 자동 전환됩니다.</string>
+    <string name="tts_auto_read_answers_title">답변 소리로 읽기</string>
+    <string name="tts_auto_read_answers_desc">AI 답변을 자동으로 TTS 재생합니다. 꺼도 음성 테스트는 계속 사용할 수 있습니다.</string>
     <string name="tts_engine">TTS 엔진</string>
     <string name="tts_provider_edge">Microsoft Edge TTS</string>
     <string name="tts_provider_edge_desc">고품질 신경망 음성 (인터넷 필요)</string>

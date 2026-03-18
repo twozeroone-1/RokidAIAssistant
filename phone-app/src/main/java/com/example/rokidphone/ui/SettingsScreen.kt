@@ -41,6 +41,7 @@ fun SettingsScreen(
     onNavigateToLogViewer: () -> Unit = {},
     onNavigateToLlmParameters: () -> Unit = {},
     onNavigateToTtsSettings: () -> Unit = {},
+    onNavigateToDocsSettings: () -> Unit = {},
     onTestConnection: (ApiSettings) -> Unit = {}
 ) {
     val context = LocalContext.current
@@ -107,6 +108,20 @@ fun SettingsScreen(
                         else 
                             currentModel?.displayName ?: settings.aiModelId,
                         onClick = { showModelDialog = true }
+                    )
+                }
+            }
+
+            item {
+                SettingsSection(title = stringResource(R.string.docs_assistant)) {
+                    SettingsRow(
+                        title = stringResource(R.string.docs_assistant),
+                        subtitle = if (settings.answerMode == AnswerMode.DOCS) {
+                            stringResource(R.string.docs_mode_enabled)
+                        } else {
+                            stringResource(R.string.general_mode_enabled)
+                        },
+                        onClick = onNavigateToDocsSettings
                     )
                 }
             }

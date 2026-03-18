@@ -38,6 +38,7 @@ import com.example.rokidphone.ui.TtsSettingsScreen
 import com.example.rokidphone.ui.SettingsScreen
 import com.example.rokidphone.ui.conversation.ChatScreen
 import com.example.rokidphone.ui.conversation.ConversationHistoryScreen
+import com.example.rokidphone.ui.docs.DocsSettingsScreen
 import com.example.rokidphone.ui.gallery.ClearAllConfirmDialog
 import com.example.rokidphone.ui.gallery.DeleteConfirmDialog
 import com.example.rokidphone.ui.gallery.PhotoDetailScreen
@@ -247,6 +248,9 @@ fun PhoneMainScreen(
                     processingStatus = uiState.processingStatus,
                     currentModelId = settings.aiModelId,
                     conversations = uiState.conversations,
+                    docsWorkspaceSlug = settings.anythingLlmWorkspaceSlug,
+                    docsHealthStatus = settings.anythingLlmLastHealthStatus,
+                    docsHealthMessage = settings.anythingLlmLastHealthMessage,
                     recordingState = uiState.recordingState,
                     onConnect = { viewModel.startScanning() },
                     onDisconnect = { viewModel.disconnect() },
@@ -259,7 +263,8 @@ fun PhoneMainScreen(
                     onStopRecording = { viewModel.stopRecording() },
                     onViewConversationHistory = { navController.navigate(NavRoutes.CHAT) },
                     onViewGallery = { navController.navigate(NavRoutes.GALLERY) },
-                    onViewRecordings = { navController.navigate(NavRoutes.RECORDINGS) }
+                    onViewRecordings = { navController.navigate(NavRoutes.RECORDINGS) },
+                    onViewDocsSettings = { navController.navigate(NavRoutes.DOCS_SETTINGS) }
                 )
             }
             
@@ -460,7 +465,18 @@ fun PhoneMainScreen(
                     onBack = { navController.popBackStack() },
                     onNavigateToLogViewer = { navController.navigate(NavRoutes.LOG_VIEWER) },
                     onNavigateToLlmParameters = { navController.navigate(NavRoutes.LLM_PARAMETERS) },
-                    onNavigateToTtsSettings = { navController.navigate(NavRoutes.TTS_SETTINGS) }
+                    onNavigateToTtsSettings = { navController.navigate(NavRoutes.TTS_SETTINGS) },
+                    onNavigateToDocsSettings = { navController.navigate(NavRoutes.DOCS_SETTINGS) }
+                )
+            }
+
+            composable(NavRoutes.DOCS_SETTINGS) {
+                DocsSettingsScreen(
+                    settings = settings,
+                    onSettingsChange = { newSettings ->
+                        settingsRepository.saveSettings(newSettings)
+                    },
+                    onBack = { navController.popBackStack() }
                 )
             }
             

@@ -7,13 +7,31 @@ import androidx.core.content.FileProvider
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.rokidphone.ai.provider.ProviderManager
+import com.example.rokidphone.data.AnswerMode
 import com.example.rokidphone.data.SettingsRepository
+import com.example.rokidphone.data.validateForDocs
+import com.example.rokidphone.data.validateForChat
+import com.example.rokidphone.data.toAnythingLlmSettings
 import com.example.rokidcommon.protocol.Message as ProtocolMessage
 import com.example.rokidphone.data.db.Conversation
 import com.example.rokidphone.data.db.ConversationRepository
 import com.example.rokidphone.data.db.Message
 import com.example.rokidphone.data.db.MessageRole
+import com.example.rokidphone.data.SettingsValidationResult
 import com.example.rokidphone.service.ServiceBridge
+import com.example.rokidphone.service.rag.AnythingLlmRagService
+import com.example.rokidphone.service.rag.AssistantInputType
+import com.example.rokidphone.service.rag.InputNormalizer
+import com.example.rokidphone.service.rag.RouteResolver
+import com.example.rokidphone.service.rag.RouteTarget
+import com.example.rokidphone.service.rag.SourcePreview
+import com.example.rokidphone.service.rag.buildAssistantMessageMetadata
+import com.example.rokidphone.service.rag.buildConversationMetadata
+import com.example.rokidphone.service.rag.buildConversationModelId
+import com.example.rokidphone.service.rag.buildConversationProviderId
+import com.example.rokidphone.service.rag.buildGlassesAssistantResponse
+import com.example.rokidphone.service.rag.markDocsAssistantFailure
+import com.example.rokidphone.service.rag.markDocsAssistantHealthy
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import java.io.File
@@ -33,6 +51,9 @@ class ConversationViewModel(application: Application) : AndroidViewModel(applica
     private val conversationRepository = ConversationRepository.getInstance(application)
     private val settingsRepository = SettingsRepository.getInstance(application)
     private val providerManager = ProviderManager.getInstance(application)
+    private val routeResolver = RouteResolver()
+    private val ragService = AnythingLlmRagService()
+    private val inputNormalizer = InputNormalizer()
     
     // All conversations list
     val conversations: StateFlow<List<Conversation>> = conversationRepository
@@ -100,8 +121,8 @@ class ConversationViewModel(application: Application) : AndroidViewModel(applica
             try {
                 val settings = settingsRepository.getSettings()
                 val conversation = conversationRepository.createConversation(
-                    providerId = settings.aiProvider.name,
-                    modelId = settings.aiModelId,
+                    providerId = buildConversationProviderId(settings),
+                    modelId = buildConversationModelId(settings),
                     title = "New Conversation",
                     systemPrompt = settings.systemPrompt
                 )
@@ -138,15 +159,17 @@ class ConversationViewModel(application: Application) : AndroidViewModel(applica
         val text = _inputText.value.trim()
         if (text.isBlank()) return
         
-        // Check API key before sending
         val settings = settingsRepository.getSettings()
-        val apiKey = settings.getCurrentApiKey()
-        if (apiKey.isBlank()) {
-            Log.e(TAG, "API key not configured")
-            _uiState.update { 
+        val validation = if (settings.answerMode == AnswerMode.DOCS) {
+            settings.validateForDocs()
+        } else {
+            settings.validateForChat()
+        }
+        if (validation !is SettingsValidationResult.Valid) {
+            _uiState.update {
                 it.copy(
                     isLoading = false,
-                    error = "API key not configured. Please set up an API key in Settings."
+                    error = validation.toDisplayMessage(settings)
                 )
             }
             return
@@ -173,8 +196,8 @@ class ConversationViewModel(application: Application) : AndroidViewModel(applica
         try {
             val settings = settingsRepository.getSettings()
             val conversation = conversationRepository.createConversation(
-                providerId = settings.aiProvider.name,
-                modelId = settings.aiModelId,
+                providerId = buildConversationProviderId(settings),
+                modelId = buildConversationModelId(settings),
                 title = text.take(50),
                 systemPrompt = settings.systemPrompt
             )
@@ -198,34 +221,74 @@ class ConversationViewModel(application: Application) : AndroidViewModel(applica
             // Set loading state
             _uiState.update { it.copy(isLoading = true, error = null) }
             
+            val settings = settingsRepository.getSettings()
+            val route = routeResolver.resolve(settings, AssistantInputType.TEXT)
+
             // Save user message
             conversationRepository.addUserMessage(conversationId, text)
             
-            // Get AI service
-            val aiService = providerManager.getActiveService()
-            if (aiService == null) {
-                _uiState.update { it.copy(isLoading = false, error = "AI service not configured") }
-                return
+            val response: String
+            val assistantMetadata: com.example.rokidphone.data.db.MessageMetadata
+
+            when (route.target) {
+                RouteTarget.GENERAL_AI -> {
+                    val aiService = providerManager.getActiveService()
+                    if (aiService == null) {
+                        _uiState.update { it.copy(isLoading = false, error = "AI service not configured") }
+                        return
+                    }
+
+                    response = aiService.chat(text)
+                    assistantMetadata = buildAssistantMessageMetadata(route, settings)
+                }
+
+                RouteTarget.DOCS_RAG -> {
+                    val ragAnswer = ragService.answer(
+                        settings = settings.toAnythingLlmSettings(),
+                        question = inputNormalizer.normalizeText(text),
+                    ).getOrElse { error ->
+                        markDocsAssistantFailure(settingsRepository, error.message ?: "Docs Assistant request failed.")
+                        throw error
+                    }
+
+                    markDocsAssistantHealthy(
+                        settingsRepository,
+                        "AnythingLLM responded from ${settings.anythingLlmWorkspaceSlug.ifBlank { "workspace" }}.",
+                    )
+                    response = ragAnswer.answerText
+                    assistantMetadata = buildAssistantMessageMetadata(route, settings, ragAnswer.sources)
+                }
+
+                else -> {
+                    _uiState.update { it.copy(isLoading = false, error = "Unsupported route for text chat") }
+                    return
+                }
             }
             
-            // Get AI response
-            val response = aiService.chat(text)
-            
             // Save AI response
-            val settings = settingsRepository.getSettings()
             conversationRepository.addAssistantMessage(
                 conversationId = conversationId,
                 content = response,
-                modelId = settings.aiModelId
+                modelId = buildConversationModelId(settings),
+                metadata = assistantMetadata,
+                conversationMetadata = buildConversationMetadata(route, settings)
             )
             
             // Push AI response to glasses (if enabled in settings)
-            val pushToGlasses = settingsRepository.getSettings().pushChatToGlasses
-            if (pushToGlasses) {
+            if (settings.pushChatToGlasses) {
                 try {
-                    val cleanedResponse = ServiceBridge.cleanMarkdown(response)
                     ServiceBridge.sendToGlasses(ProtocolMessage.aiProcessing("Thinking..."))
-                    ServiceBridge.sendToGlasses(ProtocolMessage.aiResponseText(cleanedResponse))
+                    ServiceBridge.sendToGlasses(
+                        ProtocolMessage.aiResponseText(
+                            buildGlassesAssistantResponse(
+                                answerText = response,
+                                route = route,
+                                sources = assistantMetadata.sourcePreviews.map {
+                                    SourcePreview(it.title, it.snippet)
+                                },
+                            )
+                        )
+                    )
                     Log.d(TAG, "AI response pushed to glasses")
                 } catch (e: Exception) {
                     Log.w(TAG, "Failed to push AI response to glasses", e)
@@ -417,6 +480,17 @@ class ConversationViewModel(application: Application) : AndroidViewModel(applica
             val conversation = conversationRepository.getConversationById(conversationId) ?: return@launch
             exportConversation(conversation, onExportReady)
         }
+    }
+}
+
+private fun SettingsValidationResult.toDisplayMessage(settings: com.example.rokidphone.data.ApiSettings): String {
+    return when (this) {
+        is SettingsValidationResult.InvalidConfiguration -> message
+        is SettingsValidationResult.MissingApiKey ->
+            "API key not configured. Please set up ${provider.name.lowercase()} in Settings."
+        is SettingsValidationResult.MissingSpeechService ->
+            "Speech service not configured. Please configure at least one STT provider."
+        SettingsValidationResult.Valid -> "Settings are valid."
     }
 }
 

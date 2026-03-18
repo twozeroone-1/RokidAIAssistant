@@ -205,6 +205,9 @@ interface ConversationDao {
     
     @Query("UPDATE conversations SET title = :title, updated_at = :updatedAt WHERE id = :id")
     suspend fun updateTitle(id: String, title: String, updatedAt: Long = System.currentTimeMillis())
+
+    @Query("UPDATE conversations SET metadata = :metadata, updated_at = :updatedAt WHERE id = :id")
+    suspend fun updateMetadata(id: String, metadata: String?, updatedAt: Long = System.currentTimeMillis())
     
     @Query("UPDATE conversations SET message_count = message_count + 1, updated_at = :updatedAt WHERE id = :id")
     suspend fun incrementMessageCount(id: String, updatedAt: Long = System.currentTimeMillis())

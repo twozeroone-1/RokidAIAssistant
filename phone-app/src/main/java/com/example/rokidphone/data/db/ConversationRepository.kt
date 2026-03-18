@@ -113,7 +113,8 @@ class ConversationRepository(context: Context) {
         providerId: String,
         modelId: String,
         title: String = "New Conversation",
-        systemPrompt: String = ""
+        systemPrompt: String = "",
+        metadata: ConversationMetadata? = null,
     ): Conversation = withContext(Dispatchers.IO) {
         val id = UUID.randomUUID().toString()
         val now = System.currentTimeMillis()
@@ -125,7 +126,8 @@ class ConversationRepository(context: Context) {
             modelId = modelId,
             systemPrompt = systemPrompt,
             createdAt = now,
-            updatedAt = now
+            updatedAt = now,
+            metadata = metadata?.encode(),
         )
         
         conversationDao.insertConversation(entity)
@@ -231,7 +233,9 @@ class ConversationRepository(context: Context) {
         hasImage: Boolean = false,
         imagePath: String? = null,
         tokenCount: Int? = null,
-        finishReason: String? = null
+        finishReason: String? = null,
+        metadata: MessageMetadata? = null,
+        conversationMetadata: ConversationMetadata? = null,
     ): Message = withContext(Dispatchers.IO) {
         val id = UUID.randomUUID().toString()
         val now = System.currentTimeMillis()
@@ -246,11 +250,15 @@ class ConversationRepository(context: Context) {
             hasImage = hasImage,
             imagePath = imagePath,
             tokenCount = tokenCount,
-            finishReason = finishReason
+            finishReason = finishReason,
+            metadata = metadata?.encode(),
         )
         
         messageDao.insertMessage(entity)
         conversationDao.incrementMessageCount(conversationId)
+        if (conversationMetadata != null) {
+            conversationDao.updateMetadata(conversationId, conversationMetadata.encode())
+        }
         
         Log.d(TAG, "Added message to conversation $conversationId: ${content.take(50)}...")
         
@@ -263,14 +271,16 @@ class ConversationRepository(context: Context) {
     suspend fun addUserMessage(
         conversationId: String,
         content: String,
-        imagePath: String? = null
+        imagePath: String? = null,
+        metadata: MessageMetadata? = null,
     ): Message {
         return addMessage(
             conversationId = conversationId,
             role = MessageRole.USER,
             content = content,
             hasImage = imagePath != null,
-            imagePath = imagePath
+            imagePath = imagePath,
+            metadata = metadata,
         )
     }
     
@@ -282,7 +292,9 @@ class ConversationRepository(context: Context) {
         content: String,
         modelId: String? = null,
         tokenCount: Int? = null,
-        finishReason: String? = null
+        finishReason: String? = null,
+        metadata: MessageMetadata? = null,
+        conversationMetadata: ConversationMetadata? = null,
     ): Message {
         return addMessage(
             conversationId = conversationId,
@@ -290,7 +302,9 @@ class ConversationRepository(context: Context) {
             content = content,
             modelId = modelId,
             tokenCount = tokenCount,
-            finishReason = finishReason
+            finishReason = finishReason,
+            metadata = metadata,
+            conversationMetadata = conversationMetadata,
         )
     }
     
@@ -380,7 +394,8 @@ data class Conversation(
     val updatedAt: Long,
     val messageCount: Int,
     val isArchived: Boolean,
-    val isPinned: Boolean
+    val isPinned: Boolean,
+    val metadata: ConversationMetadata = ConversationMetadata(),
 )
 
 /**
@@ -397,7 +412,8 @@ data class Message(
     val hasImage: Boolean,
     val imagePath: String?,
     val finishReason: String?,
-    val errorMessage: String?
+    val errorMessage: String?,
+    val metadata: MessageMetadata = MessageMetadata(),
 )
 
 /**
@@ -422,7 +438,8 @@ private fun ConversationEntity.toConversation(): Conversation {
         updatedAt = updatedAt,
         messageCount = messageCount,
         isArchived = isArchived,
-        isPinned = isPinned
+        isPinned = isPinned,
+        metadata = decodeConversationMetadata(metadata),
     )
 }
 
@@ -438,6 +455,7 @@ private fun MessageEntity.toMessage(): Message {
         hasImage = hasImage,
         imagePath = imagePath,
         finishReason = finishReason,
-        errorMessage = errorMessage
+        errorMessage = errorMessage,
+        metadata = MessageMetadata.decode(metadata),
     )
 }
