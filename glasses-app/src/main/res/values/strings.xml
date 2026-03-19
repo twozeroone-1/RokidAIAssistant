@@ -56,6 +56,9 @@
     <string name="connect_phone_first">Please connect phone first</string>
     <string name="capturing_photo">Capturing photo...</string>
     <string name="please_wait_short">Please wait</string>
+    <string name="remote_key_learning_record_hint">Press the remote key to use for recording</string>
+    <string name="remote_key_learning_camera_hint">Press the remote key to use for photo capture</string>
+    <string name="remote_key_learning_generic_hint">Press the remote key to learn</string>
     <string name="compressing_photo">Compressing...</string>
     <string name="transferring_photo">Transferring...</string>
     <string name="photo_sent_waiting_ai">Sent, waiting for AI analysis...</string>

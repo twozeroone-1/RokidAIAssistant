@@ -64,6 +64,12 @@ class SettingsRepository(private val context: Context) {
         private const val KEY_AUTO_ANALYZE_RECORDINGS = "auto_analyze_recordings"
         private const val KEY_PUSH_CHAT_TO_GLASSES = "push_chat_to_glasses"
         private const val KEY_PUSH_RECORDING_TO_GLASSES = "push_recording_to_glasses"
+
+        // Keys for remote key mapping
+        private const val KEY_REMOTE_RECORD_KEY_CODE = "remote_record_key_code"
+        private const val KEY_REMOTE_CAMERA_KEY_CODE = "remote_camera_key_code"
+        private const val KEY_REMOTE_KEY_LEARNING_TARGET = "remote_key_learning_target"
+        private const val KEY_REMOTE_KEY_LEARNING_STATUS_MESSAGE = "remote_key_learning_status_message"
         
         // Keys for TTS settings
         private const val KEY_AUTO_READ_RESPONSES_ALOUD = "auto_read_responses_aloud"
@@ -206,6 +212,11 @@ class SettingsRepository(private val context: Context) {
             autoAnalyzeRecordings = prefs.getBoolean(KEY_AUTO_ANALYZE_RECORDINGS, true),
             pushChatToGlasses = prefs.getBoolean(KEY_PUSH_CHAT_TO_GLASSES, true),
             pushRecordingToGlasses = prefs.getBoolean(KEY_PUSH_RECORDING_TO_GLASSES, true),
+            remoteRecordKeyCode = prefs.getIntOrNull(KEY_REMOTE_RECORD_KEY_CODE),
+            remoteCameraKeyCode = prefs.getIntOrNull(KEY_REMOTE_CAMERA_KEY_CODE),
+            remoteKeyLearningTarget = prefs.getString(KEY_REMOTE_KEY_LEARNING_TARGET, null)
+                ?.let { RemoteKeyLearningTarget.valueOf(it) },
+            remoteKeyLearningStatusMessage = prefs.getString(KEY_REMOTE_KEY_LEARNING_STATUS_MESSAGE, "") ?: "",
             temperature = prefs.getFloat(KEY_TEMPERATURE, 0.7f),
             maxTokens = prefs.getInt(KEY_MAX_TOKENS, 2048),
             topP = prefs.getFloat(KEY_TOP_P, 1.0f),
@@ -287,6 +298,10 @@ class SettingsRepository(private val context: Context) {
             putBoolean(KEY_AUTO_ANALYZE_RECORDINGS, settings.autoAnalyzeRecordings)
             putBoolean(KEY_PUSH_CHAT_TO_GLASSES, settings.pushChatToGlasses)
             putBoolean(KEY_PUSH_RECORDING_TO_GLASSES, settings.pushRecordingToGlasses)
+            putIntOrRemove(KEY_REMOTE_RECORD_KEY_CODE, settings.remoteRecordKeyCode)
+            putIntOrRemove(KEY_REMOTE_CAMERA_KEY_CODE, settings.remoteCameraKeyCode)
+            putString(KEY_REMOTE_KEY_LEARNING_TARGET, settings.remoteKeyLearningTarget?.name)
+            putString(KEY_REMOTE_KEY_LEARNING_STATUS_MESSAGE, settings.remoteKeyLearningStatusMessage)
             putFloat(KEY_TEMPERATURE, settings.temperature)
             putInt(KEY_MAX_TOKENS, settings.maxTokens)
             putFloat(KEY_TOP_P, settings.topP)
@@ -358,6 +373,14 @@ class SettingsRepository(private val context: Context) {
     
     fun updateXaiApiKey(apiKey: String) {
         saveSettings(getSettings().copy(xaiApiKey = apiKey))
+    }
+
+    private fun SharedPreferences.getIntOrNull(key: String): Int? {
+        return if (contains(key)) getInt(key, 0) else null
+    }
+
+    private fun SharedPreferences.Editor.putIntOrRemove(key: String, value: Int?): SharedPreferences.Editor {
+        return if (value == null) remove(key) else putInt(key, value)
     }
     
     fun updateAlibabaApiKey(apiKey: String) {

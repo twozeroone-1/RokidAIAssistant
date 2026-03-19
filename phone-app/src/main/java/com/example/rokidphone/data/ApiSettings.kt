@@ -846,7 +846,13 @@ data class ApiSettings(
     // Send text chat AI responses to glasses display (default: true)
     val pushChatToGlasses: Boolean = true,
     // Send phone recording results (transcript + AI response) to glasses display (default: true)
-    val pushRecordingToGlasses: Boolean = true
+    val pushRecordingToGlasses: Boolean = true,
+
+    // Remote key mapping
+    val remoteRecordKeyCode: Int? = null,
+    val remoteCameraKeyCode: Int? = null,
+    val remoteKeyLearningTarget: RemoteKeyLearningTarget? = null,
+    val remoteKeyLearningStatusMessage: String = ""
 ) {
     /**
      * Get current AI provider's API Key
@@ -1002,6 +1008,18 @@ data class ApiSettings(
             trimmed.startsWith("http://") || trimmed.startsWith("https://")
         } catch (e: Exception) {
             false
+        }
+    }
+
+    fun remoteKeyValidationError(): String? {
+        return if (
+            remoteRecordKeyCode != null &&
+            remoteCameraKeyCode != null &&
+            remoteRecordKeyCode == remoteCameraKeyCode
+        ) {
+            "Record key and camera key must be different"
+        } else {
+            null
         }
     }
 }

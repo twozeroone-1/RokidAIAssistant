@@ -30,6 +30,10 @@ class MessageTypeTest {
         assertThat(MessageType.VOICE_CANCEL.code).isEqualTo(0x13)
         assertThat(MessageType.REMOTE_RECORD_START.code).isEqualTo(0x14)
         assertThat(MessageType.REMOTE_RECORD_STOP.code).isEqualTo(0x15)
+        assertThat(MessageType.REMOTE_KEY_SETTINGS_SYNC.code).isEqualTo(0x16)
+        assertThat(MessageType.REMOTE_KEY_LEARNING_START.code).isEqualTo(0x17)
+        assertThat(MessageType.REMOTE_KEY_LEARNING_CANCEL.code).isEqualTo(0x18)
+        assertThat(MessageType.REMOTE_KEY_LEARNING_RESULT.code).isEqualTo(0x19)
     }
 
     @Test
@@ -99,8 +103,8 @@ class MessageTypeTest {
     @Test
     fun `total enum count matches expected`() {
         // Test: total number of MessageType entries
-        // Connection(5) + Voice(6) + AI(5) + Display(3) + Photo(8) + Live(4) + System(3) = 34
-        assertThat(MessageType.entries.size).isEqualTo(34)
+        // Connection(5) + Voice(10) + AI(5) + Display(3) + Photo(8) + Live(4) + System(3) = 38
+        assertThat(MessageType.entries.size).isEqualTo(38)
     }
 
     // ==================== fromCode() ====================
@@ -110,6 +114,7 @@ class MessageTypeTest {
         // Test: fromCode lookup for each known code
         assertThat(MessageType.fromCode(0x00)).isEqualTo(MessageType.HANDSHAKE)
         assertThat(MessageType.fromCode(0x10)).isEqualTo(MessageType.VOICE_START)
+        assertThat(MessageType.fromCode(0x16)).isEqualTo(MessageType.REMOTE_KEY_SETTINGS_SYNC)
         assertThat(MessageType.fromCode(0x21)).isEqualTo(MessageType.AI_RESPONSE_TEXT)
         assertThat(MessageType.fromCode(0x41)).isEqualTo(MessageType.PHOTO_DATA)
         assertThat(MessageType.fromCode(0x50)).isEqualTo(MessageType.LIVE_SESSION_START)

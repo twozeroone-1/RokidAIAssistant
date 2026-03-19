@@ -31,6 +31,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.rokidglasses.input.RemoteKeyAction
 import com.example.rokidglasses.service.WakeWordService
 import com.example.rokidglasses.service.photo.CameraService
 import com.example.rokidglasses.ui.theme.RokidGlassesTheme
@@ -44,6 +45,7 @@ class MainActivity : ComponentActivity() {
     
     // Hold reference to ViewModel for key events
     private var glassesViewModel: GlassesViewModel? = null
+    private var suppressedKeyUpCode: Int? = null
     
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -111,6 +113,34 @@ class MainActivity : ComponentActivity() {
         
         val viewModel = glassesViewModel ?: return super.onKeyDown(keyCode, event)
         val uiState = viewModel.uiState.value
+        val repeatCount = event?.repeatCount ?: 0
+
+        if (suppressedKeyUpCode == keyCode) {
+            return true
+        }
+
+        if (repeatCount == 0 && viewModel.isRemoteKeyLearningActive() && viewModel.captureRemoteLearningKey(keyCode)) {
+            suppressedKeyUpCode = keyCode
+            return true
+        }
+
+        when (viewModel.resolveRemoteKeyAction(keyCode)) {
+            RemoteKeyAction.ToggleRecording -> {
+                if (repeatCount == 0) {
+                    viewModel.triggerRemoteRecordShortcut()
+                    suppressedKeyUpCode = keyCode
+                }
+                return true
+            }
+            RemoteKeyAction.CapturePhoto -> {
+                if (repeatCount == 0) {
+                    viewModel.triggerRemoteCameraShortcut()
+                    suppressedKeyUpCode = keyCode
+                }
+                return true
+            }
+            RemoteKeyAction.None -> Unit
+        }
         
         return when (keyCode) {
             // Swipe up on touchpad / Volume up = Previous page
@@ -170,6 +200,11 @@ class MainActivity : ComponentActivity() {
     
     override fun onKeyUp(keyCode: Int, event: KeyEvent?): Boolean {
         android.util.Log.d("MainActivity", "onKeyUp: keyCode=$keyCode (${KeyEvent.keyCodeToString(keyCode)})")
+
+        if (suppressedKeyUpCode == keyCode) {
+            suppressedKeyUpCode = null
+            return true
+        }
         
         val viewModel = glassesViewModel ?: return super.onKeyUp(keyCode, event)
         val uiState = viewModel.uiState.value

@@ -18,6 +18,10 @@ enum class MessageType(val code: Int) {
     VOICE_CANCEL(0x13),          // Glasses -> Phone: Cancel recording
     REMOTE_RECORD_START(0x14),   // Phone -> Glasses: Start recording remotely
     REMOTE_RECORD_STOP(0x15),    // Phone -> Glasses: Stop recording remotely
+    REMOTE_KEY_SETTINGS_SYNC(0x16), // Phone -> Glasses: Sync learned remote key codes
+    REMOTE_KEY_LEARNING_START(0x17), // Phone -> Glasses: Arm next key capture
+    REMOTE_KEY_LEARNING_CANCEL(0x18), // Phone -> Glasses: Cancel key capture
+    REMOTE_KEY_LEARNING_RESULT(0x19), // Glasses -> Phone: Captured key for target
     
     // AI processing (0x20-0x2F)
     AI_PROCESSING(0x20),         // Phone -> Glasses: Processing

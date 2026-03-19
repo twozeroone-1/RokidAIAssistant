@@ -22,4 +22,27 @@ class SettingsRepositoryTest {
 
         assertThat(reloadedRepository.getSettings().autoReadResponsesAloud).isFalse()
     }
+
+    @Test
+    fun `saveSettings persists remote key mapping values`() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val repository = SettingsRepository(context)
+
+        repository.saveSettings(
+            ApiSettings(
+                remoteRecordKeyCode = 131,
+                remoteCameraKeyCode = 132,
+                remoteKeyLearningTarget = RemoteKeyLearningTarget.CAMERA,
+                remoteKeyLearningStatusMessage = "Waiting for key on glasses"
+            )
+        )
+
+        val reloadedRepository = SettingsRepository(context)
+        val settings = reloadedRepository.getSettings()
+
+        assertThat(settings.remoteRecordKeyCode).isEqualTo(131)
+        assertThat(settings.remoteCameraKeyCode).isEqualTo(132)
+        assertThat(settings.remoteKeyLearningTarget).isEqualTo(RemoteKeyLearningTarget.CAMERA)
+        assertThat(settings.remoteKeyLearningStatusMessage).isEqualTo("Waiting for key on glasses")
+    }
 }

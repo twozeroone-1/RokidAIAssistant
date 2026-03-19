@@ -7,6 +7,27 @@ import org.junit.Test
 class ApiSettingsTest {
 
     @Test
+    fun `remote key validation rejects duplicate record and camera keys`() {
+        val settings = ApiSettings(
+            remoteRecordKeyCode = 42,
+            remoteCameraKeyCode = 42
+        )
+
+        assertThat(settings.remoteKeyValidationError())
+            .isEqualTo("Record key and camera key must be different")
+    }
+
+    @Test
+    fun `remote key validation allows distinct keys`() {
+        val settings = ApiSettings(
+            remoteRecordKeyCode = 42,
+            remoteCameraKeyCode = 43
+        )
+
+        assertThat(settings.remoteKeyValidationError()).isNull()
+    }
+
+    @Test
     fun `getCurrentApiKey returns key of selected provider`() {
         // 測試：應回傳目前選擇 provider 的 API key
         val settings = ApiSettings(

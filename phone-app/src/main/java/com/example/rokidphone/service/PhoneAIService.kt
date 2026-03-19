@@ -10,6 +10,8 @@ import androidx.core.app.NotificationCompat
 import com.example.rokidcommon.Constants
 import com.example.rokidcommon.protocol.Message
 import com.example.rokidcommon.protocol.MessageType
+import com.example.rokidcommon.protocol.RemoteKeyLearningResultPayload
+import com.example.rokidcommon.protocol.RemoteKeyProtocol
 import com.example.rokidcommon.protocol.photo.PhotoTransferState
 import com.example.rokidphone.BuildConfig
 import com.example.rokidphone.MainActivity
@@ -18,10 +20,13 @@ import com.example.rokidphone.data.AnswerMode
 import com.example.rokidphone.data.AiProvider
 import com.example.rokidphone.data.ApiSettings
 import com.example.rokidphone.data.AvailableModels
+import com.example.rokidphone.data.RemoteKeyLearningTarget
 import com.example.rokidphone.data.SettingsRepository
 import com.example.rokidphone.data.SettingsValidationResult
 import com.example.rokidphone.data.db.ConversationRepository
 import com.example.rokidphone.data.db.RecordingRepository
+import com.example.rokidphone.input.formatRemoteKeyCode
+import com.example.rokidphone.input.isBlockedRemoteKeyCode
 import com.example.rokidphone.data.toAnythingLlmSettings
 import com.example.rokidphone.service.ai.AiServiceFactory
 import com.example.rokidphone.service.ai.AiServiceProvider
@@ -110,6 +115,7 @@ class PhoneAIService : Service() {
     
     // Conversation repository for persisting voice conversations
     private var conversationRepository: ConversationRepository? = null
+    private lateinit var settingsRepository: SettingsRepository
     
     // Recording repository for saving glasses recordings
     private var recordingRepository: RecordingRepository? = null
@@ -158,7 +164,7 @@ class PhoneAIService : Service() {
         
         try {
             // Get settings
-            val settingsRepository = SettingsRepository.getInstance(this)
+            settingsRepository = SettingsRepository.getInstance(this)
             val settings = settingsRepository.getSettings()
             
             // Initialize conversation repository for persisting voice conversations
@@ -197,6 +203,7 @@ class PhoneAIService : Service() {
                     
                     // Handle Live mode transitions
                     handleLiveModeTransition(validatedNewSettings)
+                    syncRemoteKeySettings(validatedNewSettings)
                     
                     Log.d(TAG, "Services updated: ${validatedNewSettings.aiProvider}, STT: ${validatedNewSettings.sttProvider}")
                 }
@@ -237,6 +244,10 @@ class PhoneAIService : Service() {
                             bluetoothManager?.connectedDevice?.let { device ->
                                 Log.d(TAG, "Initializing CXR Bluetooth with device: ${device.name}")
                                 cxrManager?.initBluetooth(device)
+                            }
+                            syncRemoteKeySettings(settingsRepository.getSettings())
+                            settingsRepository.getSettings().remoteKeyLearningTarget?.let { target ->
+                                startRemoteKeyLearning(target)
                             }
                         }
                     }
@@ -375,6 +386,26 @@ class PhoneAIService : Service() {
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Error in glasses recording stop collector", e)
+            }
+        }
+
+        serviceScope.launch {
+            try {
+                ServiceBridge.startRemoteKeyLearningFlow.collect { target ->
+                    startRemoteKeyLearning(target)
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error in remote key learning start collector", e)
+            }
+        }
+
+        serviceScope.launch {
+            try {
+                ServiceBridge.cancelRemoteKeyLearningFlow.collect {
+                    cancelRemoteKeyLearning()
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error in remote key learning cancel collector", e)
             }
         }
         
@@ -613,10 +644,101 @@ class PhoneAIService : Service() {
                     ))
                 }
             }
+            MessageType.REMOTE_KEY_LEARNING_RESULT -> {
+                RemoteKeyProtocol.decodeLearningResult(message.payload)?.let { payload ->
+                    handleRemoteKeyLearningResult(payload)
+                }
+            }
             else -> { 
                 Log.d(TAG, "Unhandled message type: ${message.type}")
             }
         }
+    }
+
+    private suspend fun syncRemoteKeySettings(settings: ApiSettings) {
+        bluetoothManager?.sendMessage(
+            Message(
+                type = MessageType.REMOTE_KEY_SETTINGS_SYNC,
+                payload = RemoteKeyProtocol.encodeSettingsSync(
+                    recordKeyCode = settings.remoteRecordKeyCode,
+                    cameraKeyCode = settings.remoteCameraKeyCode,
+                )
+            )
+        )
+    }
+
+    private suspend fun startRemoteKeyLearning(target: RemoteKeyLearningTarget) {
+        bluetoothManager?.sendMessage(
+            Message(
+                type = MessageType.REMOTE_KEY_LEARNING_START,
+                payload = RemoteKeyProtocol.encodeLearningRequest(target.name)
+            )
+        )
+    }
+
+    private suspend fun cancelRemoteKeyLearning() {
+        bluetoothManager?.sendMessage(
+            Message(type = MessageType.REMOTE_KEY_LEARNING_CANCEL)
+        )
+    }
+
+    private fun handleRemoteKeyLearningResult(payload: RemoteKeyLearningResultPayload) {
+        val target = runCatching { RemoteKeyLearningTarget.valueOf(payload.target) }.getOrNull() ?: return
+        val current = settingsRepository.getSettings()
+
+        if (current.remoteKeyLearningTarget != target) {
+            Log.w(TAG, "Ignoring stale remote key learning result for $target")
+            return
+        }
+
+        if (isBlockedRemoteKeyCode(payload.keyCode)) {
+            settingsRepository.saveSettings(
+                current.copy(
+                    remoteKeyLearningTarget = null,
+                    remoteKeyLearningStatusMessage = getString(
+                        R.string.remote_key_learning_blocked_status,
+                        formatRemoteKeyCode(payload.keyCode)
+                    )
+                )
+            )
+            return
+        }
+
+        val updated = when (target) {
+            RemoteKeyLearningTarget.RECORD -> current.copy(
+                remoteRecordKeyCode = payload.keyCode,
+                remoteKeyLearningTarget = null,
+            )
+            RemoteKeyLearningTarget.CAMERA -> current.copy(
+                remoteCameraKeyCode = payload.keyCode,
+                remoteKeyLearningTarget = null,
+            )
+        }
+
+        val validationError = updated.remoteKeyValidationError()
+        if (validationError != null) {
+            settingsRepository.saveSettings(
+                current.copy(
+                    remoteKeyLearningTarget = null,
+                    remoteKeyLearningStatusMessage = validationError,
+                )
+            )
+            return
+        }
+
+        val successMessageRes = when (target) {
+            RemoteKeyLearningTarget.RECORD -> R.string.remote_record_saved_status
+            RemoteKeyLearningTarget.CAMERA -> R.string.remote_camera_saved_status
+        }
+
+        settingsRepository.saveSettings(
+            updated.copy(
+                remoteKeyLearningStatusMessage = getString(
+                    successMessageRes,
+                    formatRemoteKeyCode(payload.keyCode)
+                )
+            )
+        )
     }
     
     /**

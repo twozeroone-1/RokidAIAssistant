@@ -96,6 +96,24 @@
     <string name="push_chat_to_glasses_description">Push text chat AI responses to glasses display</string>
     <string name="push_recording_to_glasses">Show Recording Results on Glasses</string>
     <string name="push_recording_to_glasses_description">Show phone recording results (transcript and AI response) on the glasses display</string>
+    <string name="remote_key_mapping_title">Remote Key Mapping</string>
+    <string name="remote_key_mapping_description">Learn the next button pressed on the connected glasses or remote. Custom mappings override the legacy hardcoded shortcuts.</string>
+    <string name="remote_record_shortcut_title">Recording shortcut</string>
+    <string name="remote_camera_shortcut_title">Camera shortcut</string>
+    <string name="remote_key_learn_action">Learn next key</string>
+    <string name="remote_key_learning_waiting_action">Waiting for key…</string>
+    <string name="remote_key_clear_action">Clear</string>
+    <string name="remote_key_clear_all_action">Clear all mappings</string>
+    <string name="remote_key_learning_record_status">Press the next remote key to use for recording.</string>
+    <string name="remote_key_learning_camera_status">Press the next remote key to use for photo capture.</string>
+    <string name="remote_key_learning_cancel_action">Cancel learning</string>
+    <string name="remote_key_learning_cancelled_status">Remote key learning cancelled.</string>
+    <string name="remote_key_learning_blocked_status">%1$s can’t be assigned. Use a different remote key.</string>
+    <string name="remote_record_cleared_status">Recording shortcut cleared.</string>
+    <string name="remote_camera_cleared_status">Camera shortcut cleared.</string>
+    <string name="remote_keys_cleared_status">Remote key mappings cleared.</string>
+    <string name="remote_record_saved_status">Recording shortcut saved as %1$s.</string>
+    <string name="remote_camera_saved_status">Camera shortcut saved as %1$s.</string>
     
     <!-- Language Settings -->
     <string name="language_settings">Language</string>

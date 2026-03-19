@@ -24,6 +24,7 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import com.example.rokidphone.R
 import com.example.rokidphone.data.*
+import com.example.rokidphone.input.formatRemoteKeyCode
 import com.example.rokidphone.service.ai.AiServiceFactory
 import com.example.rokidphone.service.stt.SttProvider
 import com.example.rokidphone.service.stt.SttServiceFactory
@@ -34,6 +35,8 @@ import kotlinx.coroutines.launch
 fun SettingsScreen(
     settings: ApiSettings,
     onSettingsChange: (ApiSettings) -> Unit,
+    onStartRemoteKeyLearning: (RemoteKeyLearningTarget) -> Unit = {},
+    onCancelRemoteKeyLearning: () -> Unit = {},
     onBack: () -> Unit,
     onNavigateToLogViewer: () -> Unit = {},
     onNavigateToLlmParameters: () -> Unit = {},
@@ -324,6 +327,15 @@ fun SettingsScreen(
                     )
                 }
             }
+
+            item {
+                RemoteKeyMappingSection(
+                    settings = settings,
+                    onSettingsChange = onSettingsChange,
+                    onStartRemoteKeyLearning = onStartRemoteKeyLearning,
+                    onCancelRemoteKeyLearning = onCancelRemoteKeyLearning,
+                )
+            }
             
             // Status display
             item {
@@ -477,6 +489,158 @@ fun SettingsScreen(
             },
             onDismiss = { showLanguageDialog = false }
         )
+    }
+}
+
+@Composable
+private fun RemoteKeyMappingSection(
+    settings: ApiSettings,
+    onSettingsChange: (ApiSettings) -> Unit,
+    onStartRemoteKeyLearning: (RemoteKeyLearningTarget) -> Unit,
+    onCancelRemoteKeyLearning: () -> Unit,
+) {
+    val statusMessage = settings.remoteKeyValidationError()
+        ?: settings.remoteKeyLearningStatusMessage.ifBlank {
+            ""
+        }
+    val isLearning = settings.remoteKeyLearningTarget != null
+    val recordClearedStatus = stringResource(R.string.remote_record_cleared_status)
+    val cameraClearedStatus = stringResource(R.string.remote_camera_cleared_status)
+    val allClearedStatus = stringResource(R.string.remote_keys_cleared_status)
+
+    SettingsSection(title = stringResource(R.string.remote_key_mapping_title)) {
+        Text(
+            text = stringResource(R.string.remote_key_mapping_description),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        RemoteKeyMappingRow(
+            title = stringResource(R.string.remote_record_shortcut_title),
+            value = formatRemoteKeyCode(settings.remoteRecordKeyCode),
+            isLearning = settings.remoteKeyLearningTarget == RemoteKeyLearningTarget.RECORD,
+            onLearn = { onStartRemoteKeyLearning(RemoteKeyLearningTarget.RECORD) },
+            onClear = {
+                onSettingsChange(
+                    settings.copy(
+                        remoteRecordKeyCode = null,
+                        remoteKeyLearningStatusMessage = recordClearedStatus,
+                    )
+                )
+            }
+        )
+
+        HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
+
+        RemoteKeyMappingRow(
+            title = stringResource(R.string.remote_camera_shortcut_title),
+            value = formatRemoteKeyCode(settings.remoteCameraKeyCode),
+            isLearning = settings.remoteKeyLearningTarget == RemoteKeyLearningTarget.CAMERA,
+            onLearn = { onStartRemoteKeyLearning(RemoteKeyLearningTarget.CAMERA) },
+            onClear = {
+                onSettingsChange(
+                    settings.copy(
+                        remoteCameraKeyCode = null,
+                        remoteKeyLearningStatusMessage = cameraClearedStatus,
+                    )
+                )
+            }
+        )
+
+        if (statusMessage.isNotBlank()) {
+            Spacer(modifier = Modifier.height(12.dp))
+            Text(
+                text = statusMessage,
+                style = MaterialTheme.typography.bodySmall,
+                color = if (settings.remoteKeyValidationError() != null) {
+                    MaterialTheme.colorScheme.error
+                } else {
+                    MaterialTheme.colorScheme.primary
+                }
+            )
+        }
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            if (isLearning) {
+                OutlinedButton(
+                    onClick = onCancelRemoteKeyLearning,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text(stringResource(R.string.remote_key_learning_cancel_action))
+                }
+            } else {
+                OutlinedButton(
+                    onClick = {
+                        onSettingsChange(
+                            settings.copy(
+                                remoteRecordKeyCode = null,
+                                remoteCameraKeyCode = null,
+                                remoteKeyLearningStatusMessage = allClearedStatus,
+                            )
+                        )
+                    },
+                    modifier = Modifier.weight(1f),
+                    enabled = settings.remoteRecordKeyCode != null || settings.remoteCameraKeyCode != null
+                ) {
+                    Text(stringResource(R.string.remote_key_clear_all_action))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun RemoteKeyMappingRow(
+    title: String,
+    value: String,
+    isLearning: Boolean,
+    onLearn: () -> Unit,
+    onClear: () -> Unit,
+) {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Text(
+            text = title,
+            style = MaterialTheme.typography.bodyLarge,
+            fontWeight = androidx.compose.ui.text.font.FontWeight.Medium
+        )
+        Text(
+            text = value,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            FilledTonalButton(
+                onClick = onLearn,
+                modifier = Modifier.weight(1f)
+            ) {
+                Text(
+                    text = if (isLearning) {
+                        stringResource(R.string.remote_key_learning_waiting_action)
+                    } else {
+                        stringResource(R.string.remote_key_learn_action)
+                    }
+                )
+            }
+            OutlinedButton(
+                onClick = onClear,
+                modifier = Modifier.weight(1f)
+            ) {
+                Text(stringResource(R.string.remote_key_clear_action))
+            }
+        }
     }
 }
 

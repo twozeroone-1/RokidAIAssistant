@@ -16,7 +16,11 @@ import com.example.rokidcommon.Constants
 import com.example.rokidcommon.protocol.ConnectionState
 import com.example.rokidcommon.protocol.Message
 import com.example.rokidcommon.protocol.MessageType
+import com.example.rokidcommon.protocol.RemoteKeyProtocol
 import com.example.rokidglasses.R
+import com.example.rokidglasses.input.RemoteKeyAction
+import com.example.rokidglasses.input.RemoteKeyActionResolver
+import com.example.rokidglasses.input.RemoteKeySettings
 import com.example.rokidglasses.sdk.CameraMode
 import com.example.rokidglasses.sdk.CxrServiceManager
 import com.example.rokidglasses.sdk.UnifiedCameraManager
@@ -123,6 +127,8 @@ class GlassesViewModel(
     
     // Video streaming JPEG compression quality (0-100)
     private val videoFrameQuality = 50
+    private var remoteKeySettings = RemoteKeySettings()
+    private var remoteKeyLearningTarget: String? = null
     
     init {
         initializeBluetooth()
@@ -475,6 +481,45 @@ class GlassesViewModel(
             startRecording()
         }
     }
+
+    fun resolveRemoteKeyAction(keyCode: Int): RemoteKeyAction {
+        return RemoteKeyActionResolver(remoteKeySettings).resolve(keyCode)
+    }
+
+    fun isRemoteKeyLearningActive(): Boolean = remoteKeyLearningTarget != null
+
+    fun captureRemoteLearningKey(keyCode: Int): Boolean {
+        val target = remoteKeyLearningTarget ?: return false
+        remoteKeyLearningTarget = null
+        _uiState.update { it.copy(hintText = defaultHintText(it)) }
+
+        viewModelScope.launch {
+            bluetoothClient.sendMessage(
+                Message(
+                    type = MessageType.REMOTE_KEY_LEARNING_RESULT,
+                    payload = RemoteKeyProtocol.encodeLearningResult(
+                        target = target,
+                        keyCode = keyCode,
+                    )
+                )
+            )
+        }
+        return true
+    }
+
+    fun triggerRemoteRecordShortcut() {
+        if (_uiState.value.isPaginated) {
+            dismissPagination()
+        }
+        toggleRecording()
+    }
+
+    fun triggerRemoteCameraShortcut() {
+        if (_uiState.value.isPaginated) {
+            dismissPagination()
+        }
+        captureAndSendPhoto()
+    }
     
     /**
      * Handle message from phone
@@ -542,6 +587,30 @@ class GlassesViewModel(
                 // Phone requested to capture photo
                 Log.d(TAG, "Phone requested photo capture")
                 captureAndSendPhoto()
+            }
+            MessageType.REMOTE_KEY_SETTINGS_SYNC -> {
+                val payload = RemoteKeyProtocol.decodeSettingsSync(message.payload) ?: return
+                remoteKeySettings = RemoteKeySettings(
+                    recordKeyCode = payload.recordKeyCode,
+                    cameraKeyCode = payload.cameraKeyCode,
+                )
+            }
+            MessageType.REMOTE_KEY_LEARNING_START -> {
+                val target = RemoteKeyProtocol.decodeLearningRequest(message.payload) ?: return
+                remoteKeyLearningTarget = target
+                _uiState.update {
+                    it.copy(
+                        hintText = when (target) {
+                            "RECORD" -> context.getString(R.string.remote_key_learning_record_hint)
+                            "CAMERA" -> context.getString(R.string.remote_key_learning_camera_hint)
+                            else -> context.getString(R.string.remote_key_learning_generic_hint)
+                        }
+                    )
+                }
+            }
+            MessageType.REMOTE_KEY_LEARNING_CANCEL -> {
+                remoteKeyLearningTarget = null
+                _uiState.update { it.copy(hintText = defaultHintText(it)) }
             }
             
             // ========== Gemini Live Mode Message Handling ==========
@@ -801,6 +870,17 @@ class GlassesViewModel(
             totalPages = 1,
             isPaginated = false
         ) }
+    }
+
+    private fun defaultHintText(state: GlassesUiState): String {
+        return when {
+            state.isListening -> context.getString(R.string.tap_stop_recording)
+            state.isProcessing || state.isCapturingPhoto -> state.hintText
+            state.isPaginated -> state.hintText
+            state.bluetoothState == BluetoothClientState.CONNECTED -> context.getString(R.string.tap_touchpad_start)
+            state.bluetoothState == BluetoothClientState.CONNECTING -> context.getString(R.string.please_wait)
+            else -> context.getString(R.string.please_connect_phone)
+        }
     }
 
     override fun onCleared() {

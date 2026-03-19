@@ -2,6 +2,7 @@ package com.example.rokidphone.service
 
 import android.util.Log
 import com.example.rokidcommon.protocol.Message
+import com.example.rokidphone.data.RemoteKeyLearningTarget
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -208,5 +209,23 @@ object ServiceBridge {
     suspend fun requestTranscribeRecording(recordingId: String, filePath: String) {
         Log.d(TAG, "Requesting transcription: $recordingId")
         _transcribeRecordingFlow.emit(TranscriptionRequest(recordingId, filePath))
+    }
+
+    // ==================== Remote Key Learning ====================
+
+    private val _startRemoteKeyLearningFlow = MutableSharedFlow<RemoteKeyLearningTarget>(replay = 0)
+    val startRemoteKeyLearningFlow: SharedFlow<RemoteKeyLearningTarget> = _startRemoteKeyLearningFlow.asSharedFlow()
+
+    private val _cancelRemoteKeyLearningFlow = MutableSharedFlow<Unit>(replay = 0)
+    val cancelRemoteKeyLearningFlow: SharedFlow<Unit> = _cancelRemoteKeyLearningFlow.asSharedFlow()
+
+    suspend fun requestStartRemoteKeyLearning(target: RemoteKeyLearningTarget) {
+        Log.d(TAG, "Requesting remote key learning for $target")
+        _startRemoteKeyLearningFlow.emit(target)
+    }
+
+    suspend fun requestCancelRemoteKeyLearning() {
+        Log.d(TAG, "Requesting remote key learning cancel")
+        _cancelRemoteKeyLearningFlow.emit(Unit)
     }
 }

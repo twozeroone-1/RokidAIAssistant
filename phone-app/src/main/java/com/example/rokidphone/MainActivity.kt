@@ -30,9 +30,11 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.example.rokidphone.data.SettingsRepository
+import com.example.rokidphone.data.RemoteKeyLearningTarget
 import com.example.rokidphone.data.validateForChat
 import com.example.rokidphone.data.validateForSpeech
 import com.example.rokidphone.service.PhoneAIService
+import com.example.rokidphone.service.ServiceBridge
 import com.example.rokidphone.ui.LlmParametersScreen
 import com.example.rokidphone.ui.TtsSettingsScreen
 import com.example.rokidphone.ui.SettingsScreen
@@ -51,6 +53,7 @@ import com.example.rokidphone.ui.theme.RokidPhoneTheme
 import com.example.rokidphone.viewmodel.ConversationViewModel
 import com.example.rokidphone.viewmodel.PhotoGalleryViewModel
 import com.example.rokidphone.viewmodel.PhoneViewModel
+import kotlinx.coroutines.launch
 
 class MainActivity : AppCompatActivity() {
     
@@ -135,6 +138,7 @@ fun PhoneMainScreen(
     val context = LocalContext.current
     val settingsRepository = remember { SettingsRepository.getInstance(context) }
     val settings by settingsRepository.settingsFlow.collectAsState()
+    val coroutineScope = rememberCoroutineScope()
     
     val navController = rememberNavController()
     val navBackStackEntry by navController.currentBackStackEntryAsState()
@@ -461,6 +465,32 @@ fun PhoneMainScreen(
                     settings = settings,
                     onSettingsChange = { newSettings ->
                         settingsRepository.saveSettings(newSettings)
+                    },
+                    onStartRemoteKeyLearning = { target ->
+                        val statusMessage = when (target) {
+                            RemoteKeyLearningTarget.RECORD -> context.getString(R.string.remote_key_learning_record_status)
+                            RemoteKeyLearningTarget.CAMERA -> context.getString(R.string.remote_key_learning_camera_status)
+                        }
+                        settingsRepository.saveSettings(
+                            settings.copy(
+                                remoteKeyLearningTarget = target,
+                                remoteKeyLearningStatusMessage = statusMessage,
+                            )
+                        )
+                        coroutineScope.launch {
+                            ServiceBridge.requestStartRemoteKeyLearning(target)
+                        }
+                    },
+                    onCancelRemoteKeyLearning = {
+                        settingsRepository.saveSettings(
+                            settings.copy(
+                                remoteKeyLearningTarget = null,
+                                remoteKeyLearningStatusMessage = context.getString(R.string.remote_key_learning_cancelled_status),
+                            )
+                        )
+                        coroutineScope.launch {
+                            ServiceBridge.requestCancelRemoteKeyLearning()
+                        }
                     },
                     onBack = { navController.popBackStack() },
                     onNavigateToLogViewer = { navController.navigate(NavRoutes.LOG_VIEWER) },
