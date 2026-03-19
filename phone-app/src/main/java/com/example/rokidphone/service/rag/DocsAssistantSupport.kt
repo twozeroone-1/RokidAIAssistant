@@ -95,7 +95,10 @@ fun buildGlassesAssistantResponse(
 
     val sourceSummary = normalizer.buildSourceSummary(sources)
     return buildString {
-        append("[Docs]")
+        when (route.routeBadge) {
+            ConversationRouteBadge.GENERAL_FALLBACK -> append("[Docs -> General]")
+            else -> append("[Docs]")
+        }
         append('\n')
         append(cleanedAnswer)
         if (!sourceSummary.isNullOrBlank()) {

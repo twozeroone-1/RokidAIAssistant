@@ -22,7 +22,7 @@ enum class ConversationRouteBadge(val label: String) {
     GENERAL("General"),
     DOCS("Docs"),
     DOCS_VIA_PHOTO_CONTEXT("Docs + Photo"),
-    GENERAL_FALLBACK("Fallback")
+    GENERAL_FALLBACK("Docs -> General")
 }
 
 data class RouteDecision(

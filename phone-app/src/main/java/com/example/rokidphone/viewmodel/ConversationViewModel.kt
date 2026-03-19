@@ -11,7 +11,6 @@ import com.example.rokidphone.data.AnswerMode
 import com.example.rokidphone.data.SettingsRepository
 import com.example.rokidphone.data.validateForDocs
 import com.example.rokidphone.data.validateForChat
-import com.example.rokidphone.data.toAnythingLlmSettings
 import com.example.rokidcommon.protocol.Message as ProtocolMessage
 import com.example.rokidphone.data.db.Conversation
 import com.example.rokidphone.data.db.ConversationRepository
@@ -25,6 +24,7 @@ import com.example.rokidphone.service.rag.InputNormalizer
 import com.example.rokidphone.service.rag.RouteResolver
 import com.example.rokidphone.service.rag.RouteTarget
 import com.example.rokidphone.service.rag.SourcePreview
+import com.example.rokidphone.service.rag.resolveDocsTextQuery
 import com.example.rokidphone.service.rag.buildAssistantMessageMetadata
 import com.example.rokidphone.service.rag.buildConversationMetadata
 import com.example.rokidphone.service.rag.buildConversationModelId
@@ -223,6 +223,7 @@ class ConversationViewModel(application: Application) : AndroidViewModel(applica
             
             val settings = settingsRepository.getSettings()
             val route = routeResolver.resolve(settings, AssistantInputType.TEXT)
+            var resolvedRoute = route
 
             // Save user message
             conversationRepository.addUserMessage(conversationId, text)
@@ -243,20 +244,31 @@ class ConversationViewModel(application: Application) : AndroidViewModel(applica
                 }
 
                 RouteTarget.DOCS_RAG -> {
-                    val ragAnswer = ragService.answer(
-                        settings = settings.toAnythingLlmSettings(),
-                        question = inputNormalizer.normalizeText(text),
-                    ).getOrElse { error ->
-                        markDocsAssistantFailure(settingsRepository, error.message ?: "Docs Assistant request failed.")
-                        throw error
-                    }
-
-                    markDocsAssistantHealthy(
-                        settingsRepository,
-                        "AnythingLLM responded from ${settings.anythingLlmWorkspaceSlug.ifBlank { "workspace" }}.",
+                    val docsResolution = resolveDocsTextQuery(
+                        settings = settings,
+                        route = route,
+                        normalizedQuestion = inputNormalizer.normalizeText(text),
+                        ragService = ragService,
+                        generalAnswer = { question ->
+                            val aiService = providerManager.getActiveService()
+                                ?: throw IllegalStateException("AI service not configured")
+                            aiService.chat(question)
+                        },
+                        onDocsHealthy = { message ->
+                            markDocsAssistantHealthy(settingsRepository, message)
+                        },
+                        onDocsFailure = { message ->
+                            markDocsAssistantFailure(settingsRepository, message)
+                        },
                     )
-                    response = ragAnswer.answerText
-                    assistantMetadata = buildAssistantMessageMetadata(route, settings, ragAnswer.sources)
+
+                    response = docsResolution.answerText
+                    assistantMetadata = buildAssistantMessageMetadata(
+                        docsResolution.route,
+                        settings,
+                        docsResolution.sources,
+                    )
+                    resolvedRoute = docsResolution.route
                 }
 
                 else -> {
@@ -271,7 +283,7 @@ class ConversationViewModel(application: Application) : AndroidViewModel(applica
                 content = response,
                 modelId = buildConversationModelId(settings),
                 metadata = assistantMetadata,
-                conversationMetadata = buildConversationMetadata(route, settings)
+                conversationMetadata = buildConversationMetadata(resolvedRoute, settings)
             )
             
             // Push AI response to glasses (if enabled in settings)
@@ -282,7 +294,7 @@ class ConversationViewModel(application: Application) : AndroidViewModel(applica
                         ProtocolMessage.aiResponseText(
                             buildGlassesAssistantResponse(
                                 answerText = response,
-                                route = route,
+                                route = resolvedRoute,
                                 sources = assistantMetadata.sourcePreviews.map {
                                     SourcePreview(it.title, it.snippet)
                                 },

@@ -63,6 +63,11 @@ class RouteResolverTest {
     }
 
     @Test
+    fun `general fallback badge is explicit for users`() {
+        assertThat(ConversationRouteBadge.GENERAL_FALLBACK.label).isEqualTo("Docs -> General")
+    }
+
+    @Test
     fun `docs auto photo stays slow when health is unknown`() {
         val route = resolver.resolve(
             settings = ApiSettings(

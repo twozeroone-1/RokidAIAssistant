@@ -43,6 +43,7 @@ import com.example.rokidphone.service.rag.RouteDecision
 import com.example.rokidphone.service.rag.RouteResolver
 import com.example.rokidphone.service.rag.RouteTarget
 import com.example.rokidphone.service.rag.SourcePreview
+import com.example.rokidphone.service.rag.resolveDocsTextQuery
 import com.example.rokidphone.service.rag.buildAssistantMessageMetadata
 import com.example.rokidphone.service.rag.buildConversationMetadata
 import com.example.rokidphone.service.rag.buildConversationModelId
@@ -1304,22 +1305,33 @@ class PhoneAIService : Service() {
                     throw IllegalStateException(validation.toDocsErrorMessage())
                 }
 
-                val ragAnswer = ragService.answer(
-                    settings = settings.toAnythingLlmSettings(),
-                    question = normalizedText,
-                ).getOrElse { error ->
-                    markDocsAssistantFailure(settingsRepository = SettingsRepository.getInstance(this), message = error.message ?: "Docs Assistant request failed.")
-                    throw error
-                }
-                markDocsAssistantHealthy(
-                    settingsRepository = SettingsRepository.getInstance(this),
-                    message = "AnythingLLM responded from ${settings.anythingLlmWorkspaceSlug.ifBlank { "workspace" }}.",
+                val docsResolution = resolveDocsTextQuery(
+                    settings = settings,
+                    route = route,
+                    normalizedQuestion = normalizedText,
+                    ragService = ragService,
+                    generalAnswer = { question ->
+                        aiService?.chat(question)
+                            ?: throw IllegalStateException("AI service not configured")
+                    },
+                    onDocsHealthy = { message ->
+                        markDocsAssistantHealthy(
+                            settingsRepository = SettingsRepository.getInstance(this),
+                            message = message,
+                        )
+                    },
+                    onDocsFailure = { message ->
+                        markDocsAssistantFailure(
+                            settingsRepository = SettingsRepository.getInstance(this),
+                            message = message,
+                        )
+                    },
                 )
 
                 RoutedAssistantResult(
-                    text = cleanMarkdown(ragAnswer.answerText),
-                    route = route,
-                    sources = ragAnswer.sources,
+                    text = cleanMarkdown(docsResolution.answerText),
+                    route = docsResolution.route,
+                    sources = docsResolution.sources,
                     modelId = buildConversationModelId(settings),
                 )
             }

@@ -19,6 +19,7 @@ import com.example.rokidphone.service.rag.buildConversationModelId
 import com.example.rokidphone.service.rag.buildConversationProviderId
 import com.example.rokidphone.service.rag.markDocsAssistantFailure
 import com.example.rokidphone.service.rag.markDocsAssistantHealthy
+import com.example.rokidphone.service.rag.resolveDocsTextQuery
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 
@@ -64,6 +65,8 @@ class EnhancedAIService(
                 settings = settings,
                 inputType = if (imageData != null) AssistantInputType.PHOTO else AssistantInputType.TEXT,
             )
+            var resolvedRoute = route
+            var responseSources = emptyList<com.example.rokidphone.service.rag.SourcePreview>()
             
             // Save user message
             conversationRepository.addUserMessage(
@@ -84,15 +87,26 @@ class EnhancedAIService(
                     }
                 }
                 RouteTarget.DOCS_RAG -> {
-                    ragService.answer(
-                        settings = settings.toAnythingLlmSettings(),
-                        question = inputNormalizer.normalizeText(userMessage),
-                    ).getOrElse { error ->
-                        markDocsAssistantFailure(settingsRepository, error.message ?: "Docs Assistant request failed.")
-                        return Result.failure(error)
-                    }.also {
-                        markDocsAssistantHealthy(settingsRepository, "AnythingLLM responded successfully.")
-                    }.answerText
+                    val docsResolution = resolveDocsTextQuery(
+                        settings = settings,
+                        route = route,
+                        normalizedQuestion = inputNormalizer.normalizeText(userMessage),
+                        ragService = ragService,
+                        generalAnswer = { question ->
+                            val aiService = providerManager.getActiveService()
+                                ?: throw IllegalStateException("AI service not configured")
+                            aiService.chat(question)
+                        },
+                        onDocsHealthy = { message ->
+                            markDocsAssistantHealthy(settingsRepository, message)
+                        },
+                        onDocsFailure = { message ->
+                            markDocsAssistantFailure(settingsRepository, message)
+                        },
+                    )
+                    resolvedRoute = docsResolution.route
+                    responseSources = docsResolution.sources
+                    docsResolution.answerText
                 }
                 RouteTarget.DOCS_PHOTO_CONTEXT_RAG -> {
                     val aiService = providerManager.getActiveService()
@@ -115,8 +129,8 @@ class EnhancedAIService(
                 conversationId = conversationId,
                 content = response,
                 modelId = buildConversationModelId(settings),
-                metadata = buildAssistantMessageMetadata(route, settings),
-                conversationMetadata = buildConversationMetadata(route, settings),
+                metadata = buildAssistantMessageMetadata(resolvedRoute, settings, responseSources),
+                conversationMetadata = buildConversationMetadata(resolvedRoute, settings),
             )
             
             // Auto-generate title
@@ -144,14 +158,25 @@ class EnhancedAIService(
         try {
             val settings = settingsRepository.getSettings()
             if (settings.answerMode == AnswerMode.DOCS) {
-                val result = ragService.answer(
-                    settings = settings.toAnythingLlmSettings(),
-                    question = inputNormalizer.normalizeText(userMessage),
-                )
-                result.onSuccess {
-                    markDocsAssistantHealthy(settingsRepository, "AnythingLLM responded successfully.")
-                }.onFailure {
-                    markDocsAssistantFailure(settingsRepository, it.message ?: "Docs Assistant request failed.")
+                val route = routeResolver.resolve(settings, AssistantInputType.TEXT)
+                val result = runCatching {
+                    resolveDocsTextQuery(
+                        settings = settings,
+                        route = route,
+                        normalizedQuestion = inputNormalizer.normalizeText(userMessage),
+                        ragService = ragService,
+                        generalAnswer = { question ->
+                            val aiService = providerManager.getActiveService()
+                                ?: throw IllegalStateException("AI service not configured")
+                            aiService.chat(question)
+                        },
+                        onDocsHealthy = { message ->
+                            markDocsAssistantHealthy(settingsRepository, message)
+                        },
+                        onDocsFailure = { message ->
+                            markDocsAssistantFailure(settingsRepository, message)
+                        },
+                    )
                 }
                 emit(
                     result.fold(
@@ -210,16 +235,26 @@ class EnhancedAIService(
         return try {
             val settings = settingsRepository.getSettings()
             if (settings.answerMode == AnswerMode.DOCS) {
-                val result = ragService.answer(
-                    settings = settings.toAnythingLlmSettings(),
-                    question = inputNormalizer.normalizeText(message),
-                )
-                result.onSuccess {
-                    markDocsAssistantHealthy(settingsRepository, "AnythingLLM responded successfully.")
-                }.onFailure {
-                    markDocsAssistantFailure(settingsRepository, it.message ?: "Docs Assistant request failed.")
+                val route = routeResolver.resolve(settings, AssistantInputType.TEXT)
+                return runCatching {
+                    resolveDocsTextQuery(
+                        settings = settings,
+                        route = route,
+                        normalizedQuestion = inputNormalizer.normalizeText(message),
+                        ragService = ragService,
+                        generalAnswer = { question ->
+                            val aiService = providerManager.getActiveService()
+                                ?: throw IllegalStateException("AI service not configured")
+                            aiService.chat(question)
+                        },
+                        onDocsHealthy = { healthMessage ->
+                            markDocsAssistantHealthy(settingsRepository, healthMessage)
+                        },
+                        onDocsFailure = { failureMessage ->
+                            markDocsAssistantFailure(settingsRepository, failureMessage)
+                        },
+                    ).answerText
                 }
-                return result.map { it.answerText }
             }
 
             val aiService = providerManager.getActiveService()
