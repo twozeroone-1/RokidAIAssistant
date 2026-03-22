@@ -369,8 +369,8 @@ class BluetoothSppClientTest {
     @Test
     fun `connectByAddress does nothing when no permission`() {
         // 測試：無權限時 connectByAddress 不做處理
-        // The default mock context doesn't grant permission
-        // Just verify no exception is thrown
+        // Explicitly deny permission (relaxed mockk returns 0 = GRANTED by default)
+        every { context.checkSelfPermission(any()) } returns android.content.pm.PackageManager.PERMISSION_DENIED
         client.connectByAddress("AA:BB:CC:DD:EE:FF")
         assertThat(client.connectionState.value).isEqualTo(BluetoothClientState.DISCONNECTED)
     }
