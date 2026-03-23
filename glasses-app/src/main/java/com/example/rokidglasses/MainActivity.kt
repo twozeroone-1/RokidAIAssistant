@@ -1,10 +1,15 @@
 package com.example.rokidglasses
 
 import android.Manifest
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import android.view.KeyEvent
 import android.view.WindowManager
@@ -31,28 +36,66 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.rokidglasses.input.PrimaryTapAction
+import com.example.rokidglasses.input.PrimaryTapActionResolver
 import com.example.rokidglasses.input.RemoteKeyAction
+import com.example.rokidglasses.input.SpriteButtonAction
+import com.example.rokidglasses.input.SpriteButtonIntentInterpreter
+import com.example.rokidglasses.input.TapUiSnapshot
+import com.example.rokidglasses.focus.FocusRecoveryPolicy
+import com.example.rokidglasses.focus.FocusRecoveryState
 import com.example.rokidglasses.service.WakeWordService
 import com.example.rokidglasses.service.photo.CameraService
+import com.example.rokidglasses.ui.SleepModeIndicator
 import com.example.rokidglasses.ui.theme.RokidGlassesTheme
+import com.example.rokidglasses.viewmodel.GlassesDisplayStage
 import com.example.rokidglasses.viewmodel.GlassesViewModel
+import com.example.rokidglasses.viewmodel.deriveDisplayStage
+import com.example.rokidglasses.viewmodel.toSleepModeSnapshot
 
 class MainActivity : ComponentActivity() {
     
     companion object {
         private const val TAG = "MainActivity"
+        private const val EXTRA_FOCUS_RECOVERY = "focus_recovery"
+        private const val EXTRA_TRIGGER_CAPTURE = "trigger_capture"
+        private const val FOCUS_RECOVERY_DELAY_MS = 350L
+        private const val ACTION_SPRITE_BUTTON_UP = "com.android.action.ACTION_SPRITE_BUTTON_UP"
+        private const val ACTION_SPRITE_BUTTON_DOWN = "com.android.action.ACTION_SPRITE_BUTTON_DOWN"
+        private const val ACTION_SPRITE_BUTTON_LONG_PRESS = "com.android.action.ACTION_SPRITE_BUTTON_LONG_PRESS"
     }
     
     // Hold reference to ViewModel for key events
     private var glassesViewModel: GlassesViewModel? = null
     private var suppressedKeyUpCode: Int? = null
+    private val primaryTapActionResolver = PrimaryTapActionResolver()
+    private val focusRecoveryPolicy = FocusRecoveryPolicy()
+    private val focusRecoveryHandler = Handler(Looper.getMainLooper())
+    private var isActivityResumed = false
+    private var lastFocusRecoveryAtMs = 0L
+    private var pendingFocusRecoveryReason: String? = null
+    private var isSpriteButtonReceiverRegistered = false
+    private val showDeviceSelectorState = mutableStateOf(false)
+    private val focusRecoveryRunnable = Runnable {
+        attemptFocusRecovery(pendingFocusRecoveryReason ?: "unknown")
+    }
+    private val spriteButtonReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            val action = intent?.action
+            Log.d(TAG, "Sprite button broadcast received: action=$action")
+            when (SpriteButtonIntentInterpreter.interpret(action)) {
+                SpriteButtonAction.None -> Unit
+                SpriteButtonAction.TriggerCapturePhoto -> triggerPhotoCaptureFromSystemButton()
+            }
+        }
+    }
     
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { permissions ->
         val allGranted = permissions.values.all { it }
         if (allGranted) {
-            startWakeWordService()
+            startServices()
         }
     }
     
@@ -73,6 +116,7 @@ class MainActivity : ComponentActivity() {
         }
         
         checkPermissions()
+        registerSpriteButtonReceiver()
         
         // Handle wake up intent
         handleWakeUpIntent(intent)
@@ -87,6 +131,8 @@ class MainActivity : ComponentActivity() {
                 
                 GlassesMainScreen(
                     viewModel = viewModel,
+                    showDeviceSelector = showDeviceSelectorState.value,
+                    onShowDeviceSelectorChange = { showDeviceSelectorState.value = it },
                     onScreenTap = { /* Screen tap triggers recording */ }
                 )
             }
@@ -98,6 +144,9 @@ class MainActivity : ComponentActivity() {
      */
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         android.util.Log.d("MainActivity", "dispatchKeyEvent: action=${event.action}, keyCode=${event.keyCode} (${KeyEvent.keyCodeToString(event.keyCode)}), scanCode=${event.scanCode}")
+        if (handleHardwareKeyEvent(event)) {
+            return true
+        }
         return super.dispatchKeyEvent(event)
     }
     
@@ -108,32 +157,44 @@ class MainActivity : ComponentActivity() {
      * - DPAD_CENTER / Enter: Toggle recording (tap) or capture photo (long press)
      */
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
-        // Debug: Log all key events to identify Rokid camera button keycode
         android.util.Log.d("MainActivity", "onKeyDown: keyCode=$keyCode (${KeyEvent.keyCodeToString(keyCode)}), scanCode=${event?.scanCode}, repeat=${event?.repeatCount}")
-        
-        val viewModel = glassesViewModel ?: return super.onKeyDown(keyCode, event)
+        return super.onKeyDown(keyCode, event)
+    }
+
+    override fun onKeyUp(keyCode: Int, event: KeyEvent?): Boolean {
+        android.util.Log.d("MainActivity", "onKeyUp: keyCode=$keyCode (${KeyEvent.keyCodeToString(keyCode)})")
+        return super.onKeyUp(keyCode, event)
+    }
+
+    private fun handleHardwareKeyEvent(event: KeyEvent): Boolean {
+        val viewModel = glassesViewModel ?: return false
+        val keyCode = event.keyCode
         val uiState = viewModel.uiState.value
-        val repeatCount = event?.repeatCount ?: 0
+        val repeatCount = event.repeatCount
 
         if (suppressedKeyUpCode == keyCode) {
             return true
         }
 
-        if (repeatCount == 0 && viewModel.isRemoteKeyLearningActive() && viewModel.captureRemoteLearningKey(keyCode)) {
+        if (event.action == KeyEvent.ACTION_DOWN &&
+            repeatCount == 0 &&
+            viewModel.isRemoteKeyLearningActive() &&
+            viewModel.captureRemoteLearningKey(keyCode)
+        ) {
             suppressedKeyUpCode = keyCode
             return true
         }
 
         when (viewModel.resolveRemoteKeyAction(keyCode)) {
             RemoteKeyAction.ToggleRecording -> {
-                if (repeatCount == 0) {
+                if (event.action == KeyEvent.ACTION_DOWN && repeatCount == 0) {
                     viewModel.triggerRemoteRecordShortcut()
                     suppressedKeyUpCode = keyCode
                 }
                 return true
             }
             RemoteKeyAction.CapturePhoto -> {
-                if (repeatCount == 0) {
+                if (event.action == KeyEvent.ACTION_DOWN && repeatCount == 0) {
                     viewModel.triggerRemoteCameraShortcut()
                     suppressedKeyUpCode = keyCode
                 }
@@ -141,89 +202,70 @@ class MainActivity : ComponentActivity() {
             }
             RemoteKeyAction.None -> Unit
         }
-        
+
         return when (keyCode) {
-            // Swipe up on touchpad / Volume up = Previous page
             KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_VOLUME_UP -> {
-                if (uiState.isPaginated) {
+                if (event.action == KeyEvent.ACTION_DOWN && uiState.isPaginated) {
                     viewModel.previousPage()
                     true
                 } else {
-                    super.onKeyDown(keyCode, event)
+                    false
                 }
             }
-            // Swipe down on touchpad / Volume down = Next page
             KeyEvent.KEYCODE_DPAD_DOWN, KeyEvent.KEYCODE_VOLUME_DOWN -> {
-                if (uiState.isPaginated) {
+                if (event.action == KeyEvent.ACTION_DOWN && uiState.isPaginated) {
                     viewModel.nextPage()
                     true
                 } else {
-                    super.onKeyDown(keyCode, event)
+                    false
                 }
             }
-            // Tap on touchpad / Enter = Toggle recording or exit pagination
-            // Long press = Take photo (workaround for camera button)
             KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER -> {
-                if (event?.repeatCount == 1) {
-                    // First repeat = long press started, capture photo
-                    android.util.Log.d("MainActivity", "Long press center = capture photo")
-                    viewModel.captureAndSendPhoto()
-                    true
-                } else if (event?.repeatCount == 0) {
-                    // Normal tap handling (will only trigger if key released before repeat)
-                    true // Consume but wait for key up
-                } else {
-                    true // Consume subsequent repeats
-                }
-            }
-            // Camera button - take photo and send to phone for AI analysis
-            KeyEvent.KEYCODE_CAMERA, 27, 
-            KeyEvent.KEYCODE_FOCUS, // Some devices use focus key for camera
-            260, 261, 262, 263 -> { // Additional camera-related keycodes
-                android.util.Log.d("MainActivity", "Camera/Focus key pressed: $keyCode")
-                viewModel.captureAndSendPhoto()
-                true
-            }
-            // Long press back = take photo (alternative trigger)
-            KeyEvent.KEYCODE_BACK -> {
-                if (event?.repeatCount == 1) {
-                    android.util.Log.d("MainActivity", "Long press back = capture photo")
-                    viewModel.captureAndSendPhoto()
-                    true
-                } else {
-                    super.onKeyDown(keyCode, event)
-                }
-            }
-            else -> super.onKeyDown(keyCode, event)
-        }
-    }
-    
-    override fun onKeyUp(keyCode: Int, event: KeyEvent?): Boolean {
-        android.util.Log.d("MainActivity", "onKeyUp: keyCode=$keyCode (${KeyEvent.keyCodeToString(keyCode)})")
-
-        if (suppressedKeyUpCode == keyCode) {
-            suppressedKeyUpCode = null
-            return true
-        }
-        
-        val viewModel = glassesViewModel ?: return super.onKeyUp(keyCode, event)
-        val uiState = viewModel.uiState.value
-        
-        return when (keyCode) {
-            KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER -> {
-                // Only handle short tap (not long press which was already handled)
-                if (event?.eventTime?.minus(event.downTime) ?: 0 < 500) {
-                    // Short tap - toggle recording
-                    if (uiState.isPaginated && uiState.currentPage == uiState.totalPages - 1) {
-                        viewModel.dismissPagination()
-                        viewModel.toggleRecording()
-                    } else if (!uiState.isPaginated) {
-                        viewModel.toggleRecording()
+                when {
+                    event.action == KeyEvent.ACTION_DOWN && repeatCount == 1 -> {
+                        Log.d(TAG, "Long press center = capture photo")
+                        viewModel.captureAndSendPhoto()
+                        true
                     }
+                    event.action == KeyEvent.ACTION_DOWN -> true
+                    event.action == KeyEvent.ACTION_UP && event.eventTime - event.downTime < 500 -> {
+                        handlePrimaryTap(viewModel)
+                        true
+                    }
+                    else -> true
                 }
-                true
             }
-            else -> super.onKeyUp(keyCode, event)
+            KeyEvent.KEYCODE_NOTIFICATION -> {
+                if (event.action == KeyEvent.ACTION_UP && event.eventTime - event.downTime < 500) {
+                    Log.d(TAG, "Touchpad alternate key mapped to primary action: $keyCode")
+                    handlePrimaryTap(viewModel)
+                    true
+                } else if (event.action == KeyEvent.ACTION_DOWN) {
+                    true
+                } else {
+                    false
+                }
+            }
+            KeyEvent.KEYCODE_CAMERA, 27,
+            KeyEvent.KEYCODE_FOCUS, 260, 261, 262, 263 -> {
+                if (event.action == KeyEvent.ACTION_DOWN && repeatCount == 0) {
+                    Log.d(TAG, "Camera/Focus key pressed: $keyCode")
+                    viewModel.captureAndSendPhoto()
+                    true
+                } else {
+                    true
+                }
+            }
+            KeyEvent.KEYCODE_BACK -> {
+                if (event.action == KeyEvent.ACTION_DOWN && repeatCount == 1) {
+                    Log.d(TAG, "Long press center = capture photo")
+                    viewModel.captureAndSendPhoto()
+                    true
+                } else {
+                    false
+                }
+            }
+            else -> false
         }
     }
     
@@ -233,6 +275,12 @@ class MainActivity : ComponentActivity() {
     }
     
     private fun handleWakeUpIntent(intent: Intent?) {
+        if (intent?.getBooleanExtra(EXTRA_FOCUS_RECOVERY, false) == true) {
+            Log.d(TAG, "Focus recovery intent received")
+        }
+        if (intent?.getBooleanExtra(EXTRA_TRIGGER_CAPTURE, false) == true) {
+            triggerPhotoCaptureFromSystemButton()
+        }
         if (intent?.getBooleanExtra("wake_up", false) == true) {
             // Woke up by voice, can auto start recording
             // TODO: Notify ViewModel to start recording
@@ -266,7 +314,7 @@ class MainActivity : ComponentActivity() {
     }
     
     private fun startServices() {
-        startWakeWordService()
+        stopWakeWordService()
         startCameraService()
     }
     
@@ -291,21 +339,171 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
+
+    private fun stopWakeWordService() {
+        stopService(Intent(this, WakeWordService::class.java))
+    }
     
     override fun onResume() {
         super.onResume()
+        isActivityResumed = true
+        cancelFocusRecovery()
         // Ensure screen stays on
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+    }
+
+    override fun onPause() {
+        super.onPause()
+        Log.d(TAG, "onPause: scheduling focus recovery")
+        scheduleFocusRecovery("activity_paused")
+    }
+
+    override fun onStop() {
+        super.onStop()
+        Log.d(TAG, "onStop: scheduling focus recovery")
+        scheduleFocusRecovery("activity_stopped")
+    }
+
+    override fun onDestroy() {
+        isActivityResumed = false
+        cancelFocusRecovery()
+        unregisterSpriteButtonReceiver()
+        super.onDestroy()
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        Log.d(TAG, "onWindowFocusChanged: hasFocus=$hasFocus")
+        if (hasFocus) {
+            cancelFocusRecovery()
+        } else {
+            scheduleFocusRecovery("window_focus_lost")
+        }
+    }
+
+    override fun onTopResumedActivityChanged(isTopResumedActivity: Boolean) {
+        super.onTopResumedActivityChanged(isTopResumedActivity)
+        Log.d(TAG, "onTopResumedActivityChanged: isTopResumedActivity=$isTopResumedActivity")
+        if (isTopResumedActivity) {
+            cancelFocusRecovery()
+        } else {
+            scheduleFocusRecovery("top_resumed_lost")
+        }
+    }
+
+    private fun scheduleFocusRecovery(reason: String) {
+        pendingFocusRecoveryReason = reason
+        focusRecoveryHandler.removeCallbacks(focusRecoveryRunnable)
+        focusRecoveryHandler.postDelayed(focusRecoveryRunnable, FOCUS_RECOVERY_DELAY_MS)
+    }
+
+    private fun cancelFocusRecovery() {
+        pendingFocusRecoveryReason = null
+        focusRecoveryHandler.removeCallbacks(focusRecoveryRunnable)
+    }
+
+    private fun attemptFocusRecovery(reason: String) {
+        val state = FocusRecoveryState(
+            isResumed = isActivityResumed,
+            hasWindowFocus = hasWindowFocus(),
+            isFinishing = isFinishing,
+            isChangingConfigurations = isChangingConfigurations,
+        )
+        val nowMs = System.currentTimeMillis()
+        if (!focusRecoveryPolicy.shouldRecover(state, nowMs, lastFocusRecoveryAtMs)) {
+            Log.d(TAG, "Skip focus recovery: reason=$reason, state=$state")
+            return
+        }
+
+        lastFocusRecoveryAtMs = nowMs
+        Log.d(TAG, "Recovering focus: reason=$reason")
+        startActivity(
+            Intent(this, MainActivity::class.java).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                putExtra(EXTRA_FOCUS_RECOVERY, true)
+            }
+        )
+    }
+
+    private fun registerSpriteButtonReceiver() {
+        if (isSpriteButtonReceiverRegistered) {
+            return
+        }
+        val filter = IntentFilter().apply {
+            addAction(ACTION_SPRITE_BUTTON_UP)
+            addAction(ACTION_SPRITE_BUTTON_DOWN)
+            addAction(ACTION_SPRITE_BUTTON_LONG_PRESS)
+        }
+        ContextCompat.registerReceiver(
+            this,
+            spriteButtonReceiver,
+            filter,
+            ContextCompat.RECEIVER_EXPORTED,
+        )
+        isSpriteButtonReceiverRegistered = true
+        Log.d(TAG, "Sprite button receiver registered")
+    }
+
+    private fun unregisterSpriteButtonReceiver() {
+        if (!isSpriteButtonReceiverRegistered) {
+            return
+        }
+        unregisterReceiver(spriteButtonReceiver)
+        isSpriteButtonReceiverRegistered = false
+        Log.d(TAG, "Sprite button receiver unregistered")
+    }
+
+    private fun triggerPhotoCaptureFromSystemButton() {
+        val viewModel = glassesViewModel
+        if (viewModel != null) {
+            Log.d(TAG, "Trigger capture from sprite button")
+            viewModel.captureAndSendPhoto()
+            return
+        }
+
+        Log.d(TAG, "Sprite button received without ViewModel, relaunching activity")
+        startActivity(
+            Intent(this, MainActivity::class.java).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                putExtra(EXTRA_TRIGGER_CAPTURE, true)
+            }
+        )
+    }
+
+    private fun handlePrimaryTap(viewModel: GlassesViewModel) {
+        val state = viewModel.uiState.value
+        when (primaryTapActionResolver.resolve(
+            TapUiSnapshot(
+                isPaginated = state.isPaginated,
+                currentPage = state.currentPage,
+                totalPages = state.totalPages,
+                isConnected = state.isConnected,
+            )
+        )) {
+            PrimaryTapAction.NextPage -> viewModel.nextPage()
+            PrimaryTapAction.PrimaryAction -> viewModel.handlePrimaryAction()
+            PrimaryTapAction.ShowDeviceSelector -> {
+                viewModel.refreshPairedDevices()
+                showDeviceSelectorState.value = true
+            }
+        }
     }
 }
 
 @Composable
 fun GlassesMainScreen(
     viewModel: GlassesViewModel,
+    showDeviceSelector: Boolean,
+    onShowDeviceSelectorChange: (Boolean) -> Unit,
     onScreenTap: () -> Unit = {}
 ) {
     val uiState by viewModel.uiState.collectAsState()
-    var showDeviceSelector by remember { mutableStateOf(false) }
+    val sleepModeStage = remember(uiState) { deriveDisplayStage(uiState.toSleepModeSnapshot()) }
+    val shouldUseSleepMode = uiState.sleepModeEnabled && !uiState.isLiveModeActive
     
     // Track swipe gesture for pagination
     var swipeOffset by remember { mutableFloatStateOf(0f) }
@@ -341,31 +539,39 @@ fun GlassesMainScreen(
                     if (uiState.currentPage < uiState.totalPages - 1) {
                         viewModel.nextPage()
                     } else {
-                        // On last page, tap to dismiss and allow new recording
-                        viewModel.dismissPagination()
+                        viewModel.handlePrimaryAction()
                     }
                 } else if (uiState.isConnected) {
-                    // When connected, tap screen to toggle recording
-                    viewModel.toggleRecording()
+                    // When connected, tap screen to advance/dismiss output or toggle recording
+                    viewModel.handlePrimaryAction()
                 } else {
                     // When disconnected, show device selector
                     viewModel.refreshPairedDevices()
-                    showDeviceSelector = true
+                    onShowDeviceSelectorChange(true)
                 }
             }
     ) {
         // Status indicator (top right)
-        StatusIndicator(
-            isConnected = uiState.isConnected,
-            isListening = uiState.isListening,
-            deviceName = uiState.connectedDeviceName,
-            modifier = Modifier
-                .align(Alignment.TopEnd)
-                .padding(16.dp)
-        )
+        if (shouldUseSleepMode) {
+            SleepModeIndicator(
+                stage = sleepModeStage,
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(16.dp)
+            )
+        } else {
+            StatusIndicator(
+                isConnected = uiState.isConnected,
+                isListening = uiState.isListening,
+                deviceName = uiState.connectedDeviceName,
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(16.dp)
+            )
+        }
         
         // Page indicator (top left) - only show when paginated
-        if (uiState.isPaginated) {
+        if (uiState.isPaginated && (!shouldUseSleepMode || sleepModeStage == GlassesDisplayStage.OUTPUT)) {
             PageIndicator(
                 currentPage = uiState.currentPage + 1,
                 totalPages = uiState.totalPages,
@@ -376,22 +582,26 @@ fun GlassesMainScreen(
         }
         
         // Main display area (centered)
-        MainDisplayArea(
-            displayText = uiState.displayText,
-            isProcessing = uiState.isProcessing,
-            isPaginated = uiState.isPaginated,
-            currentPage = uiState.currentPage,
-            totalPages = uiState.totalPages,
-            modifier = Modifier.align(Alignment.Center)
-        )
+        if (!shouldUseSleepMode || sleepModeStage == GlassesDisplayStage.OUTPUT) {
+            MainDisplayArea(
+                displayText = uiState.displayText,
+                isProcessing = uiState.isProcessing && !shouldUseSleepMode,
+                isPaginated = uiState.isPaginated,
+                currentPage = uiState.currentPage,
+                totalPages = uiState.totalPages,
+                modifier = Modifier.align(Alignment.Center)
+            )
+        }
         
         // Hint text (bottom)
-        HintText(
-            hint = uiState.hintText,
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .padding(bottom = 24.dp)
-        )
+        if (!shouldUseSleepMode || sleepModeStage == GlassesDisplayStage.OUTPUT) {
+            HintText(
+                hint = uiState.hintText,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 24.dp)
+            )
+        }
         
         // Device selector dialog
         if (showDeviceSelector) {
@@ -400,9 +610,9 @@ fun GlassesMainScreen(
                 cxrConnectedPhoneName = uiState.cxrConnectedPhoneName,
                 onDeviceSelected = { device ->
                     viewModel.connectToDevice(device)
-                    showDeviceSelector = false
+                    onShowDeviceSelectorChange(false)
                 },
-                onDismiss = { showDeviceSelector = false }
+                onDismiss = { onShowDeviceSelectorChange(false) }
             )
         }
     }

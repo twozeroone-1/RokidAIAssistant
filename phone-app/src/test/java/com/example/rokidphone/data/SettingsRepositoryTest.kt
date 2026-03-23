@@ -45,4 +45,16 @@ class SettingsRepositoryTest {
         assertThat(settings.remoteKeyLearningTarget).isEqualTo(RemoteKeyLearningTarget.CAMERA)
         assertThat(settings.remoteKeyLearningStatusMessage).isEqualTo("Waiting for key on glasses")
     }
+
+    @Test
+    fun `saveSettings persists glasses sleep mode toggle`() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val repository = SettingsRepository(context)
+
+        repository.saveSettings(ApiSettings(glassesSleepModeEnabled = true))
+
+        val reloadedRepository = SettingsRepository(context)
+
+        assertThat(reloadedRepository.getSettings().glassesSleepModeEnabled).isTrue()
+    }
 }

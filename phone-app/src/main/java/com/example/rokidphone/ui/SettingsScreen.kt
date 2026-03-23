@@ -325,6 +325,12 @@ fun SettingsScreen(
                         checked = settings.pushRecordingToGlasses,
                         onCheckedChange = { onSettingsChange(settings.copy(pushRecordingToGlasses = it)) }
                     )
+                    SettingsRowWithSwitch(
+                        title = stringResource(R.string.glasses_sleep_mode),
+                        subtitle = stringResource(R.string.glasses_sleep_mode_description),
+                        checked = settings.glassesSleepModeEnabled,
+                        onCheckedChange = { onSettingsChange(settings.copy(glassesSleepModeEnabled = it)) }
+                    )
                 }
             }
 

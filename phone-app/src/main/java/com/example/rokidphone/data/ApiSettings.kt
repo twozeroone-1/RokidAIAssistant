@@ -847,6 +847,8 @@ data class ApiSettings(
     val pushChatToGlasses: Boolean = true,
     // Send phone recording results (transcript + AI response) to glasses display (default: true)
     val pushRecordingToGlasses: Boolean = true,
+    // Replace most standby/progress text on glasses with a compact stage indicator.
+    val glassesSleepModeEnabled: Boolean = false,
 
     // Remote key mapping
     val remoteRecordKeyCode: Int? = null,

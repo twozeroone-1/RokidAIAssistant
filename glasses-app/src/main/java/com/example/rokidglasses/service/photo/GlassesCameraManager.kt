@@ -81,10 +81,8 @@ class GlassesCameraManager(private val context: Context) {
         private const val CAPTURE_TIMEOUT_MS = 10000L
         
         // Retry settings for camera access
-        // Increased retries and delays for when Rokid system service holds camera
-        private const val MAX_CAMERA_RETRIES = 5
-        private const val RETRY_DELAY_MS = 2000L
-        private const val INITIAL_DELAY_MS = 500L
+        private const val MAX_CAMERA_RETRIES = 8
+        private const val INITIAL_DELAY_MS = 300L
         
         // CameraDevice.StateCallback error codes
         private const val ERROR_CAMERA_IN_USE = 1
@@ -110,6 +108,7 @@ class GlassesCameraManager(private val context: Context) {
     // Selected camera ID
     private var cameraId: String? = null
     private var sensorOrientation: Int = 0
+    private val retryPolicy = CameraCaptureRetryPolicy()
     
     /**
      * Initialize camera manager.
@@ -252,17 +251,20 @@ class GlassesCameraManager(private val context: Context) {
                 // Check if camera is in use by another process or temporarily disabled
                 // CameraDevice.StateCallback error codes are passed through as reason:
                 // 1 = ERROR_CAMERA_IN_USE, 2 = ERROR_CAMERA_DISABLED
-                val isRecoverableError = e.reason == CameraAccessException.CAMERA_IN_USE ||
-                    e.reason == CameraAccessException.MAX_CAMERAS_IN_USE ||
-                    e.reason == ERROR_CAMERA_IN_USE ||
-                    e.reason == ERROR_CAMERA_DISABLED ||
-                    e.reason == CameraAccessException.CAMERA_DISABLED ||
-                    e.reason == CameraAccessException.CAMERA_ERROR
+                val retryReason = when (e.reason) {
+                    CameraAccessException.CAMERA_IN_USE,
+                    CameraAccessException.MAX_CAMERAS_IN_USE,
+                    ERROR_CAMERA_IN_USE -> CameraRetryReason.CameraInUse
+                    ERROR_CAMERA_DISABLED,
+                    CameraAccessException.CAMERA_DISABLED -> CameraRetryReason.CameraDisabled
+                    CameraAccessException.CAMERA_ERROR -> CameraRetryReason.CameraError
+                    else -> CameraRetryReason.Unknown
+                }
                 
-                if (isRecoverableError) {
+                if (retryPolicy.isRecoverable(retryReason)) {
                     Log.w(TAG, "Camera is in use or disabled by another app (possibly Rokid system service)")
                     if (attempt < MAX_CAMERA_RETRIES) {
-                        val delayMs = RETRY_DELAY_MS * attempt  // Progressive delay
+                        val delayMs = retryPolicy.retryDelayMs(attempt)
                         Log.d(TAG, "Waiting ${delayMs}ms before retry...")
                         delay(delayMs)
                     }
@@ -276,7 +278,7 @@ class GlassesCameraManager(private val context: Context) {
                 lastError = e
                 closeCamera()
                 if (attempt < MAX_CAMERA_RETRIES) {
-                    val delayMs = RETRY_DELAY_MS * attempt  // Progressive delay
+                    val delayMs = retryPolicy.retryDelayMs(attempt)
                     Log.d(TAG, "Waiting ${delayMs}ms before retry...")
                     delay(delayMs)
                 }

@@ -204,6 +204,7 @@ class PhoneAIService : Service() {
                     // Handle Live mode transitions
                     handleLiveModeTransition(validatedNewSettings)
                     syncRemoteKeySettings(validatedNewSettings)
+                    syncSleepModeSetting(validatedNewSettings)
                     
                     Log.d(TAG, "Services updated: ${validatedNewSettings.aiProvider}, STT: ${validatedNewSettings.sttProvider}")
                 }
@@ -246,6 +247,7 @@ class PhoneAIService : Service() {
                                 cxrManager?.initBluetooth(device)
                             }
                             syncRemoteKeySettings(settingsRepository.getSettings())
+                            syncSleepModeSetting(settingsRepository.getSettings())
                             settingsRepository.getSettings().remoteKeyLearningTarget?.let { target ->
                                 startRemoteKeyLearning(target)
                             }
@@ -663,6 +665,15 @@ class PhoneAIService : Service() {
                     recordKeyCode = settings.remoteRecordKeyCode,
                     cameraKeyCode = settings.remoteCameraKeyCode,
                 )
+            )
+        )
+    }
+
+    private suspend fun syncSleepModeSetting(settings: ApiSettings) {
+        bluetoothManager?.sendMessage(
+            Message(
+                type = MessageType.SLEEP_MODE_CONFIG,
+                payload = settings.glassesSleepModeEnabled.toString()
             )
         )
     }

@@ -64,6 +64,7 @@ class SettingsRepository(private val context: Context) {
         private const val KEY_AUTO_ANALYZE_RECORDINGS = "auto_analyze_recordings"
         private const val KEY_PUSH_CHAT_TO_GLASSES = "push_chat_to_glasses"
         private const val KEY_PUSH_RECORDING_TO_GLASSES = "push_recording_to_glasses"
+        private const val KEY_GLASSES_SLEEP_MODE_ENABLED = "glasses_sleep_mode_enabled"
 
         // Keys for remote key mapping
         private const val KEY_REMOTE_RECORD_KEY_CODE = "remote_record_key_code"
@@ -212,6 +213,7 @@ class SettingsRepository(private val context: Context) {
             autoAnalyzeRecordings = prefs.getBoolean(KEY_AUTO_ANALYZE_RECORDINGS, true),
             pushChatToGlasses = prefs.getBoolean(KEY_PUSH_CHAT_TO_GLASSES, true),
             pushRecordingToGlasses = prefs.getBoolean(KEY_PUSH_RECORDING_TO_GLASSES, true),
+            glassesSleepModeEnabled = prefs.getBoolean(KEY_GLASSES_SLEEP_MODE_ENABLED, false),
             remoteRecordKeyCode = prefs.getIntOrNull(KEY_REMOTE_RECORD_KEY_CODE),
             remoteCameraKeyCode = prefs.getIntOrNull(KEY_REMOTE_CAMERA_KEY_CODE),
             remoteKeyLearningTarget = prefs.getString(KEY_REMOTE_KEY_LEARNING_TARGET, null)
@@ -298,6 +300,7 @@ class SettingsRepository(private val context: Context) {
             putBoolean(KEY_AUTO_ANALYZE_RECORDINGS, settings.autoAnalyzeRecordings)
             putBoolean(KEY_PUSH_CHAT_TO_GLASSES, settings.pushChatToGlasses)
             putBoolean(KEY_PUSH_RECORDING_TO_GLASSES, settings.pushRecordingToGlasses)
+            putBoolean(KEY_GLASSES_SLEEP_MODE_ENABLED, settings.glassesSleepModeEnabled)
             putIntOrRemove(KEY_REMOTE_RECORD_KEY_CODE, settings.remoteRecordKeyCode)
             putIntOrRemove(KEY_REMOTE_CAMERA_KEY_CODE, settings.remoteCameraKeyCode)
             putString(KEY_REMOTE_KEY_LEARNING_TARGET, settings.remoteKeyLearningTarget?.name)
