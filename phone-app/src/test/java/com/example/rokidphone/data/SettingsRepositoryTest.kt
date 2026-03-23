@@ -57,16 +57,4 @@ class SettingsRepositoryTest {
 
         assertThat(reloadedRepository.getSettings().glassesSleepModeEnabled).isTrue()
     }
-
-    @Test
-    fun `saveSettings persists glasses system wake word toggle`() {
-        val context = ApplicationProvider.getApplicationContext<Context>()
-        val repository = SettingsRepository(context)
-
-        repository.saveSettings(ApiSettings(glassesSystemWakeWordEnabled = false))
-
-        val reloadedRepository = SettingsRepository(context)
-
-        assertThat(reloadedRepository.getSettings().glassesSystemWakeWordEnabled).isFalse()
-    }
 }

@@ -98,9 +98,7 @@
     <string name="push_recording_to_glasses_description">휴대폰 녹음 결과(음성 인식 내용과 AI 응답)를 안경 화면에 표시</string>
     <string name="glasses_sleep_mode">안경 최대절전모드</string>
     <string name="glasses_sleep_mode_description">대기와 진행 텍스트를 숨기고 간단한 점 표시기로 대체합니다</string>
-    <string name="glasses_system_wake_word">시스템 “Hi Rokid”</string>
-    <string name="glasses_system_wake_word_description">RokidAIAssistant가 강제로 대신하지 않고, 안경의 기본 “Hi Rokid” 웨이크워드를 유지합니다</string>
-
+    
     <!-- Language Settings -->
     <string name="language_settings">언어 설정</string>
     <string name="select_language">언어 선택</string>

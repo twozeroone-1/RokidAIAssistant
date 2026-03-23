@@ -331,12 +331,6 @@ fun SettingsScreen(
                         checked = settings.glassesSleepModeEnabled,
                         onCheckedChange = { onSettingsChange(settings.copy(glassesSleepModeEnabled = it)) }
                     )
-                    SettingsRowWithSwitch(
-                        title = stringResource(R.string.glasses_system_wake_word),
-                        subtitle = stringResource(R.string.glasses_system_wake_word_description),
-                        checked = settings.glassesSystemWakeWordEnabled,
-                        onCheckedChange = { onSettingsChange(settings.copy(glassesSystemWakeWordEnabled = it)) }
-                    )
                 }
             }
 
