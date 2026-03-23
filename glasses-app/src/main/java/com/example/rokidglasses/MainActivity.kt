@@ -45,6 +45,8 @@ import com.example.rokidglasses.input.TapUiSnapshot
 import com.example.rokidglasses.focus.FocusRecoveryPolicy
 import com.example.rokidglasses.focus.FocusRecoveryState
 import com.example.rokidglasses.service.WakeWordService
+import com.example.rokidglasses.service.WakeWordServiceAction
+import com.example.rokidglasses.service.WakeWordServicePreferencePolicy
 import com.example.rokidglasses.service.photo.CameraService
 import com.example.rokidglasses.ui.SleepModeIndicator
 import com.example.rokidglasses.ui.theme.RokidGlassesTheme
@@ -126,8 +128,13 @@ class MainActivity : ComponentActivity() {
                 val viewModel: GlassesViewModel = viewModel(
                     factory = GlassesViewModel.Factory(this)
                 )
+                val uiState by viewModel.uiState.collectAsState()
                 // Store reference for key events
                 glassesViewModel = viewModel
+
+                LaunchedEffect(uiState.systemWakeWordEnabled) {
+                    applyWakeWordServicePreference(uiState.systemWakeWordEnabled)
+                }
                 
                 GlassesMainScreen(
                     viewModel = viewModel,
@@ -314,7 +321,7 @@ class MainActivity : ComponentActivity() {
     }
     
     private fun startServices() {
-        stopWakeWordService()
+        applyWakeWordServicePreference(systemWakeWordEnabled = true)
         startCameraService()
     }
     
@@ -342,6 +349,14 @@ class MainActivity : ComponentActivity() {
 
     private fun stopWakeWordService() {
         stopService(Intent(this, WakeWordService::class.java))
+    }
+
+    private fun applyWakeWordServicePreference(systemWakeWordEnabled: Boolean) {
+        when (WakeWordServicePreferencePolicy.resolveAction(systemWakeWordEnabled, WakeWordService.isRunning)) {
+            WakeWordServiceAction.START -> startWakeWordService()
+            WakeWordServiceAction.STOP -> stopWakeWordService()
+            WakeWordServiceAction.NONE -> Unit
+        }
     }
     
     override fun onResume() {

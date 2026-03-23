@@ -98,6 +98,8 @@
     <string name="push_recording_to_glasses_description">Show phone recording results (transcript and AI response) on the glasses display</string>
     <string name="glasses_sleep_mode">Sleep Mode on Glasses</string>
     <string name="glasses_sleep_mode_description">Hide most standby and progress text on the glasses and show a compact dot indicator instead</string>
+    <string name="glasses_system_wake_word">System “Hi Rokid”</string>
+    <string name="glasses_system_wake_word_description">Keep the built-in “Hi Rokid” wake word active on the glasses instead of forcing RokidAIAssistant takeover</string>
     <string name="remote_key_mapping_title">Remote Key Mapping</string>
     <string name="remote_key_mapping_description">Learn the next button pressed on the connected glasses or remote. Custom mappings override the legacy hardcoded shortcuts.</string>
     <string name="remote_record_shortcut_title">Recording shortcut</string>

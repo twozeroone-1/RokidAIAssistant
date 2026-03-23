@@ -45,6 +45,7 @@ data class GlassesUiState(
     val isAwaitingAnalysis: Boolean = false,
     val hasVisibleOutput: Boolean = false,
     val sleepModeEnabled: Boolean = false,
+    val systemWakeWordEnabled: Boolean = true,
     val displayText: String = "",
     val hintText: String = "",
     val connectionState: ConnectionState = ConnectionState.DISCONNECTED,
@@ -633,6 +634,15 @@ class GlassesViewModel(
                 _uiState.update {
                     it.copy(
                         sleepModeEnabled = message.payload?.equals("true", ignoreCase = true) == true
+                    )
+                }
+            }
+            MessageType.WAKE_WORD_SERVICE_CONFIG -> {
+                _uiState.update {
+                    it.copy(
+                        systemWakeWordEnabled = message.payload?.let { payload ->
+                            payload.equals("true", ignoreCase = true)
+                        } ?: true
                     )
                 }
             }

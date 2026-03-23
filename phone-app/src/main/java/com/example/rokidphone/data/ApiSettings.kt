@@ -849,6 +849,8 @@ data class ApiSettings(
     val pushRecordingToGlasses: Boolean = true,
     // Replace most standby/progress text on glasses with a compact stage indicator.
     val glassesSleepModeEnabled: Boolean = false,
+    // Keep the built-in glasses wake phrase active instead of forcing assistant takeover.
+    val glassesSystemWakeWordEnabled: Boolean = true,
 
     // Remote key mapping
     val remoteRecordKeyCode: Int? = null,

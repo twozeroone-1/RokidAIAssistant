@@ -205,6 +205,7 @@ class PhoneAIService : Service() {
                     handleLiveModeTransition(validatedNewSettings)
                     syncRemoteKeySettings(validatedNewSettings)
                     syncSleepModeSetting(validatedNewSettings)
+                    syncWakeWordSetting(validatedNewSettings)
                     
                     Log.d(TAG, "Services updated: ${validatedNewSettings.aiProvider}, STT: ${validatedNewSettings.sttProvider}")
                 }
@@ -248,6 +249,7 @@ class PhoneAIService : Service() {
                             }
                             syncRemoteKeySettings(settingsRepository.getSettings())
                             syncSleepModeSetting(settingsRepository.getSettings())
+                            syncWakeWordSetting(settingsRepository.getSettings())
                             settingsRepository.getSettings().remoteKeyLearningTarget?.let { target ->
                                 startRemoteKeyLearning(target)
                             }
@@ -674,6 +676,15 @@ class PhoneAIService : Service() {
             Message(
                 type = MessageType.SLEEP_MODE_CONFIG,
                 payload = settings.glassesSleepModeEnabled.toString()
+            )
+        )
+    }
+
+    private suspend fun syncWakeWordSetting(settings: ApiSettings) {
+        bluetoothManager?.sendMessage(
+            Message(
+                type = MessageType.WAKE_WORD_SERVICE_CONFIG,
+                payload = settings.glassesSystemWakeWordEnabled.toString()
             )
         )
     }
