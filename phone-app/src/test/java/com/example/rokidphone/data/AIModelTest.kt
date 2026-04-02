@@ -9,6 +9,16 @@ import org.junit.Test
  */
 class AIModelTest {
 
+    @Test
+    fun `AvailableModels Gemini catalog includes latest approved lite and live ids`() {
+        val geminiIds = AvailableModels.geminiModels.map { it.id }
+        val liveIds = AvailableModels.geminiLiveModels.map { it.id }
+
+        assertThat(geminiIds).contains("gemini-3.1-flash-lite-preview")
+        assertThat(geminiIds).contains("gemini-3-flash-preview")
+        assertThat(liveIds).contains("gemini-2.5-flash-native-audio-preview-09-2025")
+    }
+
     // ==================== Gemini Model ID Tests ====================
 
     @Test

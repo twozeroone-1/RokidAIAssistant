@@ -11,6 +11,22 @@ import org.robolectric.RobolectricTestRunner
 class SettingsRepositoryTest {
 
     @Test
+    fun `saveSettings normalizes multiline Gemini key pool`() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val repository = SettingsRepository(context)
+
+        repository.saveSettings(
+            ApiSettings(
+                geminiApiKey = " key-a \n\nkey-b\nkey-a\nkey-c "
+            )
+        )
+
+        val reloadedRepository = SettingsRepository(context)
+
+        assertThat(reloadedRepository.getSettings().geminiApiKey).isEqualTo("key-a\nkey-b\nkey-c")
+    }
+
+    @Test
     fun `saveSettings persists auto read responses toggle`() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val repository = SettingsRepository(context)

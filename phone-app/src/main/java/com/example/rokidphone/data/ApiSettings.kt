@@ -195,6 +195,15 @@ object AvailableModels {
             description = "Frontier performance at low cost (Preview)"
         ),
         ModelOption(
+            id = "gemini-3.1-flash-lite-preview",
+            displayName = "Gemini 3.1 Flash-Lite (Preview)",
+            provider = AiProvider.GEMINI,
+            supportsAudio = true,
+            supportsVision = true,
+            isPreview = true,
+            description = "Lowest-cost Gemini 3.1 option for fast multimodal tasks (Preview)"
+        ),
+        ModelOption(
             id = "gemini-2.5-pro",
             displayName = "Gemini 2.5 Pro",
             provider = AiProvider.GEMINI,
@@ -656,12 +665,13 @@ object AvailableModels {
 
     val geminiLiveModels = listOf(
         ModelOption(
-            id = "gemini-2.5-flash-exp",
-            displayName = "Gemini 2.5 Flash (Live)",
+            id = "gemini-2.5-flash-native-audio-preview-09-2025",
+            displayName = "Gemini 2.5 Flash Native Audio (Preview)",
             provider = AiProvider.GEMINI_LIVE,
             supportsAudio = true,
             supportsVision = true,
-            description = "Live streaming model for real-time voice interactions"
+            isPreview = true,
+            description = "Native audio streaming model for real-time voice interactions"
         )
     )
 
@@ -856,6 +866,19 @@ data class ApiSettings(
     val remoteKeyLearningTarget: RemoteKeyLearningTarget? = null,
     val remoteKeyLearningStatusMessage: String = ""
 ) {
+    /**
+     * Parse Gemini API key input as a key pool.
+     * Accepts both single-line and multiline input, trims blanks, and removes duplicates.
+     */
+    fun getGeminiApiKeys(): List<String> {
+        return geminiApiKey
+            .lineSequence()
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+            .distinct()
+            .toList()
+    }
+
     /**
      * Get current AI provider's API Key
      */

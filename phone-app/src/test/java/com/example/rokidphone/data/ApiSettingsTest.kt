@@ -7,6 +7,24 @@ import org.junit.Test
 class ApiSettingsTest {
 
     @Test
+    fun `getGeminiApiKeys parses multiline input and removes duplicates`() {
+        val settings = ApiSettings(
+            geminiApiKey = " key-a \n\nkey-b\nkey-a\nkey-c "
+        )
+
+        assertThat(settings.getGeminiApiKeys()).containsExactly(
+            "key-a", "key-b", "key-c"
+        ).inOrder()
+    }
+
+    @Test
+    fun `getGeminiApiKeys keeps single key input compatible`() {
+        val settings = ApiSettings(geminiApiKey = "single-key")
+
+        assertThat(settings.getGeminiApiKeys()).containsExactly("single-key")
+    }
+
+    @Test
     fun `remote key validation rejects duplicate record and camera keys`() {
         val settings = ApiSettings(
             remoteRecordKeyCode = 42,

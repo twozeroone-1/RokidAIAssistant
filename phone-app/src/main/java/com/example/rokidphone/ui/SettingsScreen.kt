@@ -154,7 +154,12 @@ fun SettingsScreen(
                                     label = stringResource(R.string.gemini_api_key),
                                     value = settings.geminiApiKey,
                                     onValueChange = { onSettingsChange(settings.copy(geminiApiKey = it)) },
-                                    isActive = true
+                                    isActive = true,
+                                    allowMultiline = true,
+                                    helperText = stringResource(
+                                        R.string.gemini_api_key_pool_hint,
+                                        settings.getGeminiApiKeys().size
+                                    )
                                 )
                             }
                             AiProvider.OPENAI -> {
@@ -251,7 +256,12 @@ fun SettingsScreen(
                                     label = stringResource(R.string.gemini_api_key),
                                     value = settings.geminiApiKey,
                                     onValueChange = { onSettingsChange(settings.copy(geminiApiKey = it)) },
-                                    isActive = true
+                                    isActive = true,
+                                    allowMultiline = true,
+                                    helperText = stringResource(
+                                        R.string.gemini_api_key_pool_hint,
+                                        settings.getGeminiApiKeys().size
+                                    )
                                 )
                             }
                             else -> {}
@@ -811,7 +821,9 @@ fun ApiKeyField(
     label: String,
     value: String,
     onValueChange: (String) -> Unit,
-    isActive: Boolean
+    isActive: Boolean,
+    allowMultiline: Boolean = false,
+    helperText: String? = null
 ) {
     var passwordVisible by remember { mutableStateOf(false) }
     val inUseText = stringResource(R.string.in_use)
@@ -823,9 +835,13 @@ fun ApiKeyField(
         onValueChange = onValueChange,
         label = { Text(label) },
         modifier = Modifier.fillMaxWidth(),
-        singleLine = true,
+        singleLine = !allowMultiline,
+        minLines = if (allowMultiline) 4 else 1,
+        maxLines = if (allowMultiline) 6 else 1,
         visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
-        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+        keyboardOptions = KeyboardOptions(
+            keyboardType = if (allowMultiline) KeyboardType.Text else KeyboardType.Password
+        ),
         trailingIcon = {
             Row {
                 if (isActive && value.isNotBlank()) {
@@ -843,6 +859,9 @@ fun ApiKeyField(
                     )
                 }
             }
+        },
+        supportingText = helperText?.let { text ->
+            { Text(text) }
         },
         colors = OutlinedTextFieldDefaults.colors(
             focusedBorderColor = if (isActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline
