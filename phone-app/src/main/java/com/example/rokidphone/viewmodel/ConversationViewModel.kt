@@ -68,6 +68,10 @@ class ConversationViewModel(application: Application) : AndroidViewModel(applica
     // Current conversation ID
     private val _currentConversationId = MutableStateFlow<String?>(null)
     val currentConversationId: StateFlow<String?> = _currentConversationId.asStateFlow()
+
+    // Draft conversation state for composing a new chat before the first message is sent.
+    private val _isDraftConversationOpen = MutableStateFlow(false)
+    val isDraftConversationOpen: StateFlow<Boolean> = _isDraftConversationOpen.asStateFlow()
     
     // Current conversation
     val currentConversation: StateFlow<Conversation?> = _currentConversationId
@@ -115,32 +119,21 @@ class ConversationViewModel(application: Application) : AndroidViewModel(applica
     }
     
     /**
-     * Create a new conversation
+     * Open a new conversation draft without persisting it yet.
      */
     fun createNewConversation() {
-        viewModelScope.launch {
-            try {
-                val settings = settingsRepository.getSettings()
-                val conversation = conversationRepository.createConversation(
-                    providerId = buildConversationProviderId(settings),
-                    modelId = buildConversationModelId(settings),
-                    title = "New Conversation",
-                    systemPrompt = settings.systemPrompt
-                )
-                
-                _currentConversationId.value = conversation.id
-                Log.d(TAG, "Created new conversation: ${conversation.id}")
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to create conversation", e)
-                _uiState.update { it.copy(error = "Failed to create conversation: ${e.message}") }
-            }
-        }
+        _currentConversationId.value = null
+        _isDraftConversationOpen.value = true
+        _inputText.value = ""
+        _uiState.update { it.copy(error = null) }
+        Log.d(TAG, "Opened new conversation draft")
     }
     
     /**
      * Select a conversation
      */
     fun selectConversation(conversation: Conversation) {
+        _isDraftConversationOpen.value = false
         _currentConversationId.value = conversation.id
         Log.d(TAG, "Selected conversation: ${conversation.id}")
     }
@@ -149,6 +142,7 @@ class ConversationViewModel(application: Application) : AndroidViewModel(applica
      * Select a conversation (by ID)
      */
     fun selectConversation(conversationId: String) {
+        _isDraftConversationOpen.value = false
         _currentConversationId.value = conversationId
         Log.d(TAG, "Selected conversation: $conversationId")
     }
@@ -203,7 +197,7 @@ class ConversationViewModel(application: Application) : AndroidViewModel(applica
                 title = text.take(50),
                 systemPrompt = settings.systemPrompt
             )
-            
+            _isDraftConversationOpen.value = false
             _currentConversationId.value = conversation.id
             sendMessageToConversation(conversation.id, text)
         } catch (e: Exception) {
@@ -359,6 +353,7 @@ class ConversationViewModel(application: Application) : AndroidViewModel(applica
                 // If the deleted conversation is the current one, clear selection
                 if (_currentConversationId.value == conversation.id) {
                     _currentConversationId.value = null
+                    _isDraftConversationOpen.value = false
                 }
                 
                 Log.d(TAG, "Deleted conversation: ${conversation.id}")
@@ -377,6 +372,7 @@ class ConversationViewModel(application: Application) : AndroidViewModel(applica
             try {
                 conversationRepository.deleteAllConversations()
                 _currentConversationId.value = null
+                _isDraftConversationOpen.value = false
                 Log.d(TAG, "Deleted all conversations")
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to delete all conversations", e)
@@ -435,6 +431,7 @@ class ConversationViewModel(application: Application) : AndroidViewModel(applica
      */
     fun closeCurrentConversation() {
         _currentConversationId.value = null
+        _isDraftConversationOpen.value = false
     }
     
     /**

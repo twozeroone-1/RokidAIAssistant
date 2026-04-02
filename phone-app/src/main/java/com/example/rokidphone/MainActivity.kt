@@ -373,6 +373,7 @@ fun PhoneMainScreen(
                 val conversationViewModel: ConversationViewModel = viewModel()
                 val conversations by conversationViewModel.conversations.collectAsState()
                 val currentConversationId by conversationViewModel.currentConversationId.collectAsState()
+                val isDraftConversationOpen by conversationViewModel.isDraftConversationOpen.collectAsState()
                 val currentMessages by conversationViewModel.currentMessages.collectAsState()
                 val currentConversation by conversationViewModel.currentConversation.collectAsState()
                 val chatUiState by conversationViewModel.uiState.collectAsState()
@@ -386,7 +387,7 @@ fun PhoneMainScreen(
                     }
                 }
                 
-                if (currentConversationId != null) {
+                if (currentConversationId != null || isDraftConversationOpen) {
                     // Show chat screen
                     ChatScreen(
                         conversationTitle = currentConversation?.title ?: stringResource(R.string.new_conversation),
