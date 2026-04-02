@@ -156,6 +156,7 @@
     
     <!-- API Keys -->
     <string name="gemini_api_key">Gemini API Key</string>
+    <string name="gemini_api_key_pool_hint">%1$d keys ready. Enter one Gemini API key per line. The app rotates keys automatically on quota or auth failures.</string>
     <string name="openai_api_key">OpenAI API Key</string>
     <string name="anthropic_api_key">Anthropic API Key</string>
     <string name="deepseek_api_key">DeepSeek API Key</string>

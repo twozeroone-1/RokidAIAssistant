@@ -26,9 +26,11 @@ class GeminiServiceTest {
 
     private fun createService(
         apiKey: String = "test-api-key",
-        modelId: String = "gemini-2.5-flash"
+        modelId: String = "gemini-2.5-flash",
+        apiKeys: List<String> = emptyList()
     ): GeminiService = GeminiService(
         apiKey = apiKey,
+        apiKeys = apiKeys,
         modelId = modelId,
         baseUrl = mockServer.baseUrlNoSlash
     )
@@ -276,6 +278,49 @@ class GeminiServiceTest {
         val result = service.chat("retry test")
 
         assertThat(result).isEqualTo("retry-ok")
+    }
+
+    @Test
+    fun `chat - quota failure on first key fails over to next key`() = runBlocking {
+        val service = createService(apiKeys = listOf("key-1", "key-2"))
+        mockServer.server.enqueue(jsonResponse("{\"error\":{\"message\":\"RESOURCE_EXHAUSTED\"}}", 429))
+        mockServer.server.enqueue(jsonResponse(TestFixtures.MockResponses.geminiChatSuccess("from-second-key")))
+
+        val result = service.chat("retry with next key")
+
+        assertThat(result).isEqualTo("from-second-key")
+        val firstRequest = mockServer.server.takeRequest()
+        val secondRequest = mockServer.server.takeRequest()
+        assertThat(firstRequest.path).contains("key=key-1")
+        assertThat(secondRequest.path).contains("key=key-2")
+    }
+
+    @Test
+    fun `chat - invalid key on first key fails over to next key`() = runBlocking {
+        val service = createService(apiKeys = listOf("bad-key", "good-key"))
+        mockServer.server.enqueue(jsonResponse("{\"error\":{\"message\":\"API key not valid\"}}", 401))
+        mockServer.server.enqueue(jsonResponse(TestFixtures.MockResponses.geminiChatSuccess("good-key-ok")))
+
+        val result = service.chat("auth fallback")
+
+        assertThat(result).isEqualTo("good-key-ok")
+        val firstRequest = mockServer.server.takeRequest()
+        val secondRequest = mockServer.server.takeRequest()
+        assertThat(firstRequest.path).contains("key=bad-key")
+        assertThat(secondRequest.path).contains("key=good-key")
+    }
+
+    @Test
+    fun `chat - invalid request does not fan out across all keys`() = runBlocking {
+        val service = createService(apiKeys = listOf("key-1", "key-2"))
+        mockServer.server.enqueue(jsonResponse("{\"error\":{\"message\":\"Invalid generation config\"}}", 400))
+
+        val result = service.chat("bad request")
+
+        assertThat(result).contains("unavailable")
+        val firstRequest = mockServer.server.takeRequest()
+        assertThat(firstRequest.path).contains("key=key-1")
+        assertThat(mockServer.server.requestCount).isEqualTo(1)
     }
 
     @Test

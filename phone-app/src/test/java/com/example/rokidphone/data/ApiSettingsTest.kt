@@ -7,6 +7,24 @@ import org.junit.Test
 class ApiSettingsTest {
 
     @Test
+    fun `getGeminiApiKeys parses multiline input and removes duplicates`() {
+        val settings = ApiSettings(
+            geminiApiKey = " key-a \n\nkey-b\nkey-a\nkey-c "
+        )
+
+        assertThat(settings.getGeminiApiKeys()).containsExactly(
+            "key-a", "key-b", "key-c"
+        ).inOrder()
+    }
+
+    @Test
+    fun `getGeminiApiKeys keeps single key input compatible`() {
+        val settings = ApiSettings(geminiApiKey = "single-key")
+
+        assertThat(settings.getGeminiApiKeys()).containsExactly("single-key")
+    }
+
+    @Test
     fun `getCurrentApiKey returns key of selected provider`() {
         // 測試：應回傳目前選擇 provider 的 API key
         val settings = ApiSettings(
