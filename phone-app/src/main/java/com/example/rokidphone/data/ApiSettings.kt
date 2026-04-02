@@ -857,6 +857,8 @@ data class ApiSettings(
     val pushChatToGlasses: Boolean = true,
     // Send phone recording results (transcript + AI response) to glasses display (default: true)
     val pushRecordingToGlasses: Boolean = true,
+    // When enabled, every AI request uses a new conversation record and clears provider history first.
+    val alwaysStartNewAiSession: Boolean = false,
     // Replace most standby/progress text on glasses with a compact stage indicator.
     val glassesSleepModeEnabled: Boolean = false
 ) {

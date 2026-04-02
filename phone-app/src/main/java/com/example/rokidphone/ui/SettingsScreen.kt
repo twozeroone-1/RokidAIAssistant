@@ -311,6 +311,13 @@ fun SettingsScreen(
                         subtitle = settings.systemPrompt.take(50) + if (settings.systemPrompt.length > 50) "..." else "",
                         onClick = { showSystemPromptDialog = true }
                     )
+
+                    SettingsRowWithSwitch(
+                        title = stringResource(R.string.always_start_new_ai_session),
+                        subtitle = stringResource(R.string.always_start_new_ai_session_description),
+                        checked = settings.alwaysStartNewAiSession,
+                        onCheckedChange = { onSettingsChange(settings.copy(alwaysStartNewAiSession = it)) }
+                    )
                 }
             }
             

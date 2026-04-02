@@ -7,6 +7,13 @@ import org.junit.Test
 class ApiSettingsTest {
 
     @Test
+    fun `alwaysStartNewAiSession defaults to false`() {
+        val settings = ApiSettings()
+
+        assertThat(settings.alwaysStartNewAiSession).isFalse()
+    }
+
+    @Test
     fun `getGeminiApiKeys parses multiline input and removes duplicates`() {
         val settings = ApiSettings(
             geminiApiKey = " key-a \n\nkey-b\nkey-a\nkey-c "
@@ -193,6 +200,14 @@ class ApiSettingsTest {
         assertThat(copied.ttsPitch).isEqualTo(-0.2f)
         assertThat(copied.systemTtsSpeechRate).isEqualTo(0.8f)
         assertThat(copied.systemTtsPitch).isEqualTo(1.2f)
+    }
+
+    @Test
+    fun `copy preserves alwaysStartNewAiSession unless overridden`() {
+        val original = ApiSettings(alwaysStartNewAiSession = true)
+        val copied = original.copy(aiModelId = "gemini-3.1-flash-lite-preview")
+
+        assertThat(copied.alwaysStartNewAiSession).isTrue()
     }
 
     @Test

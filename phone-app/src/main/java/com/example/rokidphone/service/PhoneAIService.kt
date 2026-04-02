@@ -27,6 +27,7 @@ import com.example.rokidphone.service.ai.AiServiceFactory
 import com.example.rokidphone.service.ai.AiServiceProvider
 import com.example.rokidphone.service.ai.GeminiLiveSession
 import com.example.rokidphone.service.cxr.CxrMobileManager
+import com.example.rokidphone.service.session.AiRequestSessionSupport
 import com.example.rokidphone.service.stt.SttProvider
 import com.example.rokidphone.service.stt.SttService
 import com.example.rokidphone.service.stt.SttServiceFactory
@@ -116,6 +117,7 @@ class PhoneAIService : Service() {
     
     // Current voice conversation ID (for grouping voice interactions)
     private var currentVoiceConversationId: String? = null
+    private var currentLiveTurnConversationId: String? = null
     
     // Track recording IDs currently being processed to prevent duplicate transcription
     private val processingRecordingIds = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
@@ -147,6 +149,7 @@ class PhoneAIService : Service() {
         serviceScope.cancel()
         liveSession?.release()
         liveSession = null
+        currentLiveTurnConversationId = null
         bluetoothManager?.disconnect()
         cxrManager?.release()
         ttsService?.shutdown()
@@ -709,7 +712,12 @@ class PhoneAIService : Service() {
             } else {
                 "Photo analysis"
             }
-            saveUserMessage(photoPrompt, imagePath = photoData.filePath)
+            val requestConversationId = prepareRequestConversation(settings, photoPrompt)
+            saveUserMessage(
+                content = photoPrompt,
+                imagePath = photoData.filePath,
+                conversationId = requestConversationId,
+            )
             ServiceBridge.emitConversation(Message(
                 type = MessageType.USER_TRANSCRIPT,
                 payload = photoPrompt
@@ -728,6 +736,7 @@ class PhoneAIService : Service() {
                 route = routedResult.route,
                 sources = routedResult.sources,
                 settings = settings,
+                conversationId = requestConversationId,
             )
             
             // Send result to glasses
@@ -828,7 +837,8 @@ class PhoneAIService : Service() {
             ))
             
             // 3.1 Save user message to database for history
-            saveUserMessage(transcript)
+            val requestConversationId = prepareRequestConversation(settings, transcript)
+            saveUserMessage(transcript, conversationId = requestConversationId)
             
             // 4. Notify thinking
             bluetoothManager?.sendMessage(Message.aiProcessing(getString(R.string.thinking)))
@@ -868,6 +878,7 @@ class PhoneAIService : Service() {
                 route = routedResult.route,
                 sources = routedResult.sources,
                 settings = settings,
+                conversationId = requestConversationId,
             )
             
             // 6.2 Save glasses recording to database (with transcript and AI response)
@@ -916,6 +927,7 @@ class PhoneAIService : Service() {
                 Log.d(TAG, "Switching away from Live mode, stopping session")
                 liveSession?.release()
                 liveSession = null
+                currentLiveTurnConversationId = null
                 
                 // Notify glasses that live session ended
                 serviceScope.launch {
@@ -978,7 +990,9 @@ class PhoneAIService : Service() {
                     type = MessageType.USER_TRANSCRIPT,
                     payload = text
                 ))
-                saveUserMessage(text)
+                val settings = SettingsRepository.getInstance(this@PhoneAIService).getSettings()
+                val conversationId = prepareLiveTurnConversation(settings, text)
+                saveUserMessage(text, conversationId = conversationId)
             }
         }
         
@@ -995,7 +1009,13 @@ class PhoneAIService : Service() {
                     payload = text
                 ))
                 val settings = SettingsRepository.getInstance(this@PhoneAIService).getSettings()
-                saveAssistantMessage(text, settings.aiModelId)
+                val conversationId = prepareLiveTurnConversation(settings, text)
+                saveAssistantMessage(
+                    content = text,
+                    modelId = settings.aiModelId,
+                    settings = settings,
+                    conversationId = conversationId,
+                )
             }
         }
         
@@ -1003,6 +1023,13 @@ class PhoneAIService : Service() {
         serviceScope.launch {
             session.turnComplete.collect {
                 Log.d(TAG, "Live turn complete")
+                val settings = SettingsRepository.getInstance(this@PhoneAIService).getSettings()
+                if (settings.alwaysStartNewAiSession) {
+                    currentLiveTurnConversationId = null
+                    liveSession?.release()
+                    liveSession = null
+                    startLiveSession(settings)
+                }
             }
         }
         
@@ -1010,6 +1037,7 @@ class PhoneAIService : Service() {
         serviceScope.launch {
             session.interrupted.collect {
                 Log.d(TAG, "Live session interrupted by user")
+                currentLiveTurnConversationId = null
             }
         }
         
@@ -1019,6 +1047,7 @@ class PhoneAIService : Service() {
                 Log.d(TAG, "Live session state: $state")
                 when (state) {
                     GeminiLiveSession.SessionState.ERROR -> {
+                        currentLiveTurnConversationId = null
                         val error = session.errorMessage.value ?: "Live session error"
                         Log.e(TAG, "Live session error: $error")
                         serviceScope.launch {
@@ -1028,6 +1057,7 @@ class PhoneAIService : Service() {
                     }
                     GeminiLiveSession.SessionState.IDLE -> {
                         // Session stopped
+                        currentLiveTurnConversationId = null
                     }
                     else -> { /* CONNECTING, ACTIVE, PAUSED, DISCONNECTING */ }
                 }
@@ -1161,13 +1191,15 @@ class PhoneAIService : Service() {
             ))
             
             // 7. Save to conversation history
-            saveUserMessage(transcript)
+            val requestConversationId = prepareRequestConversation(settings, transcript)
+            saveUserMessage(transcript, conversationId = requestConversationId)
             saveAssistantMessage(
                 content = aiResponse,
                 modelId = routedResult.modelId,
                 route = routedResult.route,
                 sources = routedResult.sources,
                 settings = settings,
+                conversationId = requestConversationId,
             )
             
             // 8. TTS playback (optional)
@@ -1439,6 +1471,63 @@ class PhoneAIService : Service() {
             .replace(Regex("\\n{3,}"), "\n\n")
             .trim()
     }
+
+    private suspend fun prepareRequestConversation(
+        settings: ApiSettings,
+        titleSeed: String,
+    ): String? {
+        AiRequestSessionSupport.clearHistoryIfNeeded(settings, listOf(aiService, speechService))
+        if (!settings.alwaysStartNewAiSession) {
+            ensureVoiceConversationSession(settings)
+            return currentVoiceConversationId
+        }
+        return createRequestConversation(settings, titleSeed)
+    }
+
+    private suspend fun prepareLiveTurnConversation(
+        settings: ApiSettings,
+        titleSeed: String,
+    ): String? {
+        if (!settings.alwaysStartNewAiSession) {
+            ensureVoiceConversationSession(settings)
+            return currentVoiceConversationId
+        }
+        if (currentLiveTurnConversationId == null) {
+            currentLiveTurnConversationId = createRequestConversation(settings, titleSeed)
+        }
+        return currentLiveTurnConversationId
+    }
+
+    private suspend fun createRequestConversation(
+        settings: ApiSettings,
+        titleSeed: String,
+    ): String? {
+        return try {
+            val conversation = conversationRepository?.createConversation(
+                providerId = buildConversationProviderId(settings),
+                modelId = buildConversationModelId(settings),
+                title = buildRequestConversationTitle(titleSeed),
+                systemPrompt = settings.systemPrompt,
+            )
+            conversation?.id
+        } catch (e: Exception) {
+            Log.e(TAG, "Error creating request conversation", e)
+            null
+        }
+    }
+
+    private fun buildRequestConversationTitle(titleSeed: String): String {
+        val normalized = titleSeed
+            .replace("\r\n", "\n")
+            .lineSequence()
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+            .joinToString(" ")
+            .replace(Regex("\\s+"), " ")
+            .trim()
+            .take(50)
+        return if (normalized.isNotBlank()) normalized else "New Conversation"
+    }
     
     /**
      * Ensure a voice conversation session exists for persisting voice interactions
@@ -1481,17 +1570,21 @@ class PhoneAIService : Service() {
     private suspend fun saveUserMessage(
         content: String,
         imagePath: String? = null,
+        conversationId: String? = null,
     ) {
         val settings = SettingsRepository.getInstance(this).getSettings()
-        ensureVoiceConversationSession(settings)
-        currentVoiceConversationId?.let { conversationId ->
+        val targetConversationId = conversationId ?: run {
+            ensureVoiceConversationSession(settings)
+            currentVoiceConversationId
+        }
+        targetConversationId?.let { resolvedConversationId ->
             try {
                 conversationRepository?.addUserMessage(
-                    conversationId = conversationId,
+                    conversationId = resolvedConversationId,
                     content = content,
                     imagePath = imagePath,
                 )
-                Log.d(TAG, "Saved user message to conversation: $conversationId")
+                Log.d(TAG, "Saved user message to conversation: $resolvedConversationId")
             } catch (e: Exception) {
                 Log.e(TAG, "Error saving user message", e)
             }
@@ -1507,18 +1600,28 @@ class PhoneAIService : Service() {
         route: RouteDecision? = null,
         sources: List<SourcePreview> = emptyList(),
         settings: ApiSettings = SettingsRepository.getInstance(this).getSettings(),
+        conversationId: String? = null,
     ) {
-        ensureVoiceConversationSession(settings)
-        currentVoiceConversationId?.let { conversationId ->
+        val targetConversationId = conversationId ?: run {
+            ensureVoiceConversationSession(settings)
+            currentVoiceConversationId
+        }
+        targetConversationId?.let { resolvedConversationId ->
             try {
                 conversationRepository?.addAssistantMessage(
-                    conversationId = conversationId,
+                    conversationId = resolvedConversationId,
                     content = content,
                     modelId = modelId,
                     metadata = route?.let { buildAssistantMessageMetadata(it, settings, sources) },
                     conversationMetadata = route?.let { buildConversationMetadata(it, settings) },
                 )
-                Log.d(TAG, "Saved assistant message to conversation: $conversationId")
+                if (conversationId != null && settings.alwaysStartNewAiSession) {
+                    val messageCount = conversationRepository?.getMessageCount(resolvedConversationId) ?: 0
+                    if (messageCount <= 2) {
+                        conversationRepository?.autoGenerateTitle(resolvedConversationId)
+                    }
+                }
+                Log.d(TAG, "Saved assistant message to conversation: $resolvedConversationId")
             } catch (e: Exception) {
                 Log.e(TAG, "Error saving assistant message", e)
             }

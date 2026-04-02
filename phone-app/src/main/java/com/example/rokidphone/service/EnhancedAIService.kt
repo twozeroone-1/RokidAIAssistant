@@ -8,6 +8,7 @@ import com.example.rokidphone.data.SettingsRepository
 import com.example.rokidphone.data.toAnythingLlmSettings
 import com.example.rokidphone.data.db.ConversationRepository
 import com.example.rokidphone.service.ai.AiServiceProvider
+import com.example.rokidphone.service.session.AiRequestSessionSupport
 import com.example.rokidphone.service.rag.AnythingLlmRagService
 import com.example.rokidphone.service.rag.AssistantInputType
 import com.example.rokidphone.service.rag.InputNormalizer
@@ -50,6 +51,31 @@ class EnhancedAIService(
     private val routeResolver = RouteResolver()
     private val ragService = AnythingLlmRagService()
     private val inputNormalizer = InputNormalizer()
+
+    private suspend fun createIsolatedConversation(
+        titleSeed: String,
+    ): String {
+        val settings = settingsRepository.getSettings()
+        return conversationRepository.createConversation(
+            providerId = buildConversationProviderId(settings),
+            modelId = buildConversationModelId(settings),
+            title = buildRequestConversationTitle(titleSeed),
+            systemPrompt = settings.systemPrompt,
+        ).id
+    }
+
+    private fun buildRequestConversationTitle(titleSeed: String): String {
+        val normalized = titleSeed
+            .replace("\r\n", "\n")
+            .lineSequence()
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+            .joinToString(" ")
+            .replace(Regex("\\s+"), " ")
+            .trim()
+            .take(50)
+        return if (normalized.isNotBlank()) normalized else "New Conversation"
+    }
     
     /**
      * Send message and get response (auto-saves to conversation history)
@@ -61,16 +87,23 @@ class EnhancedAIService(
     ): Result<String> {
         return try {
             val settings = settingsRepository.getSettings()
+            val activeConversationId = if (settings.alwaysStartNewAiSession) {
+                createIsolatedConversation(userMessage)
+            } else {
+                conversationId
+            }
             val route = routeResolver.resolve(
                 settings = settings,
                 inputType = if (imageData != null) AssistantInputType.PHOTO else AssistantInputType.TEXT,
             )
             var resolvedRoute = route
             var responseSources = emptyList<com.example.rokidphone.service.rag.SourcePreview>()
+            val aiService = providerManager.getActiveService()
+            AiRequestSessionSupport.clearHistoryIfNeeded(settings, listOf(aiService))
             
             // Save user message
             conversationRepository.addUserMessage(
-                conversationId = conversationId,
+                conversationId = activeConversationId,
                 content = userMessage,
                 imagePath = null  // TODO: If there's an image, need to save to file first
             )
@@ -78,8 +111,9 @@ class EnhancedAIService(
             val response = when (route.target) {
                 RouteTarget.GENERAL_AI,
                 RouteTarget.GENERAL_AI_FALLBACK -> {
-                    val aiService = providerManager.getActiveService()
-                        ?: return Result.failure(Exception("AI service not configured"))
+                    if (aiService == null) {
+                        return Result.failure(Exception("AI service not configured"))
+                    }
                     if (imageData != null) {
                         aiService.analyzeImage(imageData, userMessage)
                     } else {
@@ -126,7 +160,7 @@ class EnhancedAIService(
             
             // Save AI response
             conversationRepository.addAssistantMessage(
-                conversationId = conversationId,
+                conversationId = activeConversationId,
                 content = response,
                 modelId = buildConversationModelId(settings),
                 metadata = buildAssistantMessageMetadata(resolvedRoute, settings, responseSources),
@@ -134,12 +168,12 @@ class EnhancedAIService(
             )
             
             // Auto-generate title
-            val messageCount = conversationRepository.getMessageCount(conversationId)
+            val messageCount = conversationRepository.getMessageCount(activeConversationId)
             if (messageCount <= 2) {
-                conversationRepository.autoGenerateTitle(conversationId)
+                conversationRepository.autoGenerateTitle(activeConversationId)
             }
             
-            Log.d(TAG, "Message sent and response received for conversation: $conversationId")
+            Log.d(TAG, "Message sent and response received for conversation: $activeConversationId")
             Result.success(response)
             
         } catch (e: Exception) {
@@ -157,6 +191,13 @@ class EnhancedAIService(
     ): Flow<StreamResult> = flow {
         try {
             val settings = settingsRepository.getSettings()
+            val activeConversationId = if (settings.alwaysStartNewAiSession) {
+                createIsolatedConversation(userMessage)
+            } else {
+                conversationId
+            }
+            val aiService = providerManager.getActiveService()
+            AiRequestSessionSupport.clearHistoryIfNeeded(settings, listOf(aiService))
             if (settings.answerMode == AnswerMode.DOCS) {
                 val route = routeResolver.resolve(settings, AssistantInputType.TEXT)
                 val result = runCatching {
@@ -178,6 +219,27 @@ class EnhancedAIService(
                         },
                     )
                 }
+                result.onSuccess { resolution ->
+                    conversationRepository.addUserMessage(
+                        conversationId = activeConversationId,
+                        content = userMessage,
+                    )
+                    conversationRepository.addAssistantMessage(
+                        conversationId = activeConversationId,
+                        content = resolution.answerText,
+                        modelId = buildConversationModelId(settings),
+                        metadata = buildAssistantMessageMetadata(
+                            resolution.route,
+                            settings,
+                            resolution.sources,
+                        ),
+                        conversationMetadata = buildConversationMetadata(resolution.route, settings),
+                    )
+                    val messageCount = conversationRepository.getMessageCount(activeConversationId)
+                    if (messageCount <= 2) {
+                        conversationRepository.autoGenerateTitle(activeConversationId)
+                    }
+                }
                 emit(
                     result.fold(
                         onSuccess = { StreamResult.Completed(it.answerText) },
@@ -189,14 +251,13 @@ class EnhancedAIService(
             
             // Save user message
             conversationRepository.addUserMessage(
-                conversationId = conversationId,
+                conversationId = activeConversationId,
                 content = userMessage
             )
             
             emit(StreamResult.Started)
             
             // Get AI service
-            val aiService = providerManager.getActiveService()
             if (aiService == null) {
                 emit(StreamResult.Error("AI service not configured"))
                 return@flow
@@ -209,15 +270,15 @@ class EnhancedAIService(
             
             // Save AI response
             conversationRepository.addAssistantMessage(
-                conversationId = conversationId,
+                conversationId = activeConversationId,
                 content = response,
                 modelId = settings.aiModelId
             )
             
             // Auto-generate title
-            val messageCount = conversationRepository.getMessageCount(conversationId)
+            val messageCount = conversationRepository.getMessageCount(activeConversationId)
             if (messageCount <= 2) {
-                conversationRepository.autoGenerateTitle(conversationId)
+                conversationRepository.autoGenerateTitle(activeConversationId)
             }
             
             emit(StreamResult.Completed(response))
@@ -232,8 +293,12 @@ class EnhancedAIService(
      * Quick chat (without saving history)
      */
     suspend fun quickChat(message: String): Result<String> {
+        val settings = settingsRepository.getSettings()
+        if (settings.alwaysStartNewAiSession) {
+            val conversationId = createIsolatedConversation(message)
+            return sendMessage(conversationId, message)
+        }
         return try {
-            val settings = settingsRepository.getSettings()
             if (settings.answerMode == AnswerMode.DOCS) {
                 val route = routeResolver.resolve(settings, AssistantInputType.TEXT)
                 return runCatching {
@@ -259,6 +324,7 @@ class EnhancedAIService(
 
             val aiService = providerManager.getActiveService()
                 ?: return Result.failure(Exception("AI service not configured"))
+            AiRequestSessionSupport.clearHistoryIfNeeded(settings, listOf(aiService))
             
             val response = aiService.chat(message)
             Result.success(response)
@@ -275,9 +341,15 @@ class EnhancedAIService(
         imageData: ByteArray,
         prompt: String = "Please describe this image"
     ): Result<String> {
+        val settings = settingsRepository.getSettings()
+        if (settings.alwaysStartNewAiSession) {
+            val conversationId = createIsolatedConversation(prompt)
+            return sendMessage(conversationId, prompt, imageData)
+        }
         return try {
             val aiService = providerManager.getActiveService()
                 ?: return Result.failure(Exception("AI service not configured"))
+            AiRequestSessionSupport.clearHistoryIfNeeded(settings, listOf(aiService))
             
             val response = aiService.analyzeImage(imageData, prompt)
             Result.success(response)
@@ -292,11 +364,25 @@ class EnhancedAIService(
      */
     suspend fun transcribe(audioData: ByteArray): Result<String> {
         return try {
+            val settings = settingsRepository.getSettings()
             val aiService = providerManager.getActiveService()
                 ?: return Result.failure(Exception("AI service not configured"))
+            AiRequestSessionSupport.clearHistoryIfNeeded(settings, listOf(aiService))
             
             when (val result = aiService.transcribe(audioData)) {
-                is SpeechResult.Success -> Result.success(result.text)
+                is SpeechResult.Success -> {
+                    if (settings.alwaysStartNewAiSession) {
+                        val conversationId = createIsolatedConversation(
+                            result.text.ifBlank { "Audio transcription" }
+                        )
+                        conversationRepository.addAssistantMessage(
+                            conversationId = conversationId,
+                            content = result.text,
+                            modelId = buildConversationModelId(settings),
+                        )
+                    }
+                    Result.success(result.text)
+                }
                 is SpeechResult.Error -> Result.failure(Exception(result.message))
             }
         } catch (e: Exception) {

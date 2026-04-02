@@ -98,6 +98,8 @@
     <string name="push_recording_to_glasses_description">Push phone recording results (transcript and AI response) to glasses display</string>
     <string name="glasses_sleep_mode">Sleep Mode on Glasses</string>
     <string name="glasses_sleep_mode_description">Hide most standby and progress text on the glasses and show a compact dot indicator instead</string>
+    <string name="always_start_new_ai_session">Always Start a New AI Session</string>
+    <string name="always_start_new_ai_session_description">Keep request history, but force every AI request to run without previous conversation context</string>
     
     <!-- Language Settings -->
     <string name="language_settings">Language</string>

@@ -18,6 +18,7 @@ import com.example.rokidphone.data.db.Message
 import com.example.rokidphone.data.db.MessageRole
 import com.example.rokidphone.data.SettingsValidationResult
 import com.example.rokidphone.service.ServiceBridge
+import com.example.rokidphone.service.session.AiRequestSessionSupport
 import com.example.rokidphone.service.rag.AnythingLlmRagService
 import com.example.rokidphone.service.rag.AssistantInputType
 import com.example.rokidphone.service.rag.InputNormalizer
@@ -176,7 +177,8 @@ class ConversationViewModel(application: Application) : AndroidViewModel(applica
         }
         
         val conversationId = _currentConversationId.value
-        if (conversationId == null) {
+        val sessionDecision = AiRequestSessionSupport.decide(settings)
+        if (conversationId == null || sessionDecision.createNewConversation) {
             // If no current conversation, create one first
             viewModelScope.launch {
                 createNewConversationAndSendMessage(text)
@@ -224,6 +226,8 @@ class ConversationViewModel(application: Application) : AndroidViewModel(applica
             val settings = settingsRepository.getSettings()
             val route = routeResolver.resolve(settings, AssistantInputType.TEXT)
             var resolvedRoute = route
+            val aiService = providerManager.getActiveService()
+            AiRequestSessionSupport.clearHistoryIfNeeded(settings, listOf(aiService))
 
             // Save user message
             conversationRepository.addUserMessage(conversationId, text)
@@ -233,7 +237,6 @@ class ConversationViewModel(application: Application) : AndroidViewModel(applica
 
             when (route.target) {
                 RouteTarget.GENERAL_AI -> {
-                    val aiService = providerManager.getActiveService()
                     if (aiService == null) {
                         _uiState.update { it.copy(isLoading = false, error = "AI service not configured") }
                         return

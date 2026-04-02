@@ -6,8 +6,11 @@ import android.graphics.BitmapFactory
 import android.util.Base64
 import android.util.Log
 import com.example.rokidphone.R
+import com.example.rokidphone.data.db.ConversationRepository
 import com.example.rokidphone.service.ai.AiServiceFactory
 import com.example.rokidphone.service.ai.AiServiceProvider
+import com.example.rokidphone.service.rag.buildConversationModelId
+import com.example.rokidphone.service.rag.buildConversationProviderId
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
@@ -52,6 +55,8 @@ class AiRepository private constructor(
             }
         }
     }
+
+    private val conversationRepository = ConversationRepository.getInstance(context)
     
     /**
      * Analysis mode
@@ -70,6 +75,31 @@ class AiRepository private constructor(
     private fun createAiService(): AiServiceProvider {
         val settings = settingsRepository.getSettings()
         return AiServiceFactory.createService(settings)
+    }
+
+    private suspend fun createIsolatedConversation(
+        settings: ApiSettings,
+        titleSeed: String,
+    ): String {
+        return conversationRepository.createConversation(
+            providerId = buildConversationProviderId(settings),
+            modelId = buildConversationModelId(settings),
+            title = buildRequestConversationTitle(titleSeed),
+            systemPrompt = settings.systemPrompt,
+        ).id
+    }
+
+    private fun buildRequestConversationTitle(titleSeed: String): String {
+        val normalized = titleSeed
+            .replace("\r\n", "\n")
+            .lineSequence()
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+            .joinToString(" ")
+            .replace(Regex("\\s+"), " ")
+            .trim()
+            .take(50)
+        return if (normalized.isNotBlank()) normalized else "New Conversation"
     }
     
     /**
@@ -101,8 +131,23 @@ class AiRepository private constructor(
             }
             
             // Call AI service
+            val settings = settingsRepository.getSettings()
             val aiService = createAiService()
             val result = aiService.analyzeImage(processedData, prompt)
+
+            if (settings.alwaysStartNewAiSession) {
+                val conversationId = createIsolatedConversation(settings, prompt)
+                conversationRepository.addUserMessage(conversationId, prompt)
+                conversationRepository.addAssistantMessage(
+                    conversationId = conversationId,
+                    content = result,
+                    modelId = buildConversationModelId(settings),
+                )
+                val messageCount = conversationRepository.getMessageCount(conversationId)
+                if (messageCount <= 2) {
+                    conversationRepository.autoGenerateTitle(conversationId)
+                }
+            }
             
             Log.d(TAG, "Analysis completed: ${result.take(100)}...")
             ImageAnalysisResult.Success(result)

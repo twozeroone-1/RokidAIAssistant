@@ -70,4 +70,16 @@ class SettingsRepositoryTest {
 
         assertThat(reloadedRepository.getSettings().glassesSleepModeEnabled).isTrue()
     }
+
+    @Test
+    fun `saveSettings persists always start new ai session toggle`() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val repository = SettingsRepository(context)
+
+        repository.saveSettings(ApiSettings(alwaysStartNewAiSession = true))
+
+        val reloadedRepository = SettingsRepository(context)
+
+        assertThat(reloadedRepository.getSettings().alwaysStartNewAiSession).isTrue()
+    }
 }

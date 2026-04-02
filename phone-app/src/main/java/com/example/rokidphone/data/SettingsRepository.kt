@@ -64,6 +64,7 @@ class SettingsRepository(private val context: Context) {
         private const val KEY_AUTO_ANALYZE_RECORDINGS = "auto_analyze_recordings"
         private const val KEY_PUSH_CHAT_TO_GLASSES = "push_chat_to_glasses"
         private const val KEY_PUSH_RECORDING_TO_GLASSES = "push_recording_to_glasses"
+        private const val KEY_ALWAYS_START_NEW_AI_SESSION = "always_start_new_ai_session"
         private const val KEY_GLASSES_SLEEP_MODE_ENABLED = "glasses_sleep_mode_enabled"
         
         // Keys for TTS settings
@@ -207,6 +208,7 @@ class SettingsRepository(private val context: Context) {
             autoAnalyzeRecordings = prefs.getBoolean(KEY_AUTO_ANALYZE_RECORDINGS, true),
             pushChatToGlasses = prefs.getBoolean(KEY_PUSH_CHAT_TO_GLASSES, true),
             pushRecordingToGlasses = prefs.getBoolean(KEY_PUSH_RECORDING_TO_GLASSES, true),
+            alwaysStartNewAiSession = prefs.getBoolean(KEY_ALWAYS_START_NEW_AI_SESSION, false),
             glassesSleepModeEnabled = prefs.getBoolean(KEY_GLASSES_SLEEP_MODE_ENABLED, false),
             temperature = prefs.getFloat(KEY_TEMPERATURE, 0.7f),
             maxTokens = prefs.getInt(KEY_MAX_TOKENS, 2048),
@@ -304,6 +306,7 @@ class SettingsRepository(private val context: Context) {
             putBoolean(KEY_AUTO_ANALYZE_RECORDINGS, normalizedSettings.autoAnalyzeRecordings)
             putBoolean(KEY_PUSH_CHAT_TO_GLASSES, normalizedSettings.pushChatToGlasses)
             putBoolean(KEY_PUSH_RECORDING_TO_GLASSES, normalizedSettings.pushRecordingToGlasses)
+            putBoolean(KEY_ALWAYS_START_NEW_AI_SESSION, normalizedSettings.alwaysStartNewAiSession)
             putBoolean(KEY_GLASSES_SLEEP_MODE_ENABLED, normalizedSettings.glassesSleepModeEnabled)
             putFloat(KEY_TEMPERATURE, normalizedSettings.temperature)
             putInt(KEY_MAX_TOKENS, normalizedSettings.maxTokens)
@@ -420,6 +423,10 @@ class SettingsRepository(private val context: Context) {
     
     fun updateSystemPrompt(prompt: String) {
         saveSettings(getSettings().copy(systemPrompt = prompt))
+    }
+
+    fun updateAlwaysStartNewAiSession(enabled: Boolean) {
+        saveSettings(getSettings().copy(alwaysStartNewAiSession = enabled))
     }
 
     fun updateAutoReadResponsesAloud(enabled: Boolean) {
