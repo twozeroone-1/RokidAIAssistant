@@ -38,11 +38,17 @@ data class AnythingLlmSettings(
     val recentFailureCount: Int = 0,
 )
 
+fun normalizeAnythingLlmServerUrl(raw: String): String = raw.trim()
+
+fun normalizeAnythingLlmWorkspaceSlug(raw: String): String = raw.trim()
+
+fun normalizeAnythingLlmApiKey(raw: String): String = raw.filterNot { it.isWhitespace() }
+
 fun ApiSettings.toAnythingLlmSettings(): AnythingLlmSettings {
     return AnythingLlmSettings(
-        serverUrl = anythingLlmServerUrl,
-        apiKey = anythingLlmApiKey,
-        workspaceSlug = anythingLlmWorkspaceSlug,
+        serverUrl = normalizeAnythingLlmServerUrl(anythingLlmServerUrl),
+        apiKey = normalizeAnythingLlmApiKey(anythingLlmApiKey),
+        workspaceSlug = normalizeAnythingLlmWorkspaceSlug(anythingLlmWorkspaceSlug),
         runtimeEnabled = anythingLlmRuntimeEnabled,
         queryMode = anythingLlmQueryMode,
         lastHealthStatus = anythingLlmLastHealthStatus,

@@ -27,6 +27,26 @@ class SettingsRepositoryTest {
     }
 
     @Test
+    fun `saveSettings trims AnythingLLM fields`() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val repository = SettingsRepository(context)
+
+        repository.saveSettings(
+            ApiSettings(
+                anythingLlmServerUrl = " https://docs.example.com/ \n",
+                anythingLlmApiKey = " sk-anything\nllm-key \r\n",
+                anythingLlmWorkspaceSlug = " ops-docs \n"
+            )
+        )
+
+        val reloadedRepository = SettingsRepository(context)
+
+        assertThat(reloadedRepository.getSettings().anythingLlmServerUrl).isEqualTo("https://docs.example.com/")
+        assertThat(reloadedRepository.getSettings().anythingLlmApiKey).isEqualTo("sk-anythingllm-key")
+        assertThat(reloadedRepository.getSettings().anythingLlmWorkspaceSlug).isEqualTo("ops-docs")
+    }
+
+    @Test
     fun `saveSettings persists auto read responses toggle`() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val repository = SettingsRepository(context)

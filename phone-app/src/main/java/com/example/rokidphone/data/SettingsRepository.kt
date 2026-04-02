@@ -166,9 +166,9 @@ class SettingsRepository(private val context: Context) {
             customBaseUrl = prefs.getString(KEY_CUSTOM_BASE_URL, "http://localhost:11434/v1/") 
                 ?: "http://localhost:11434/v1/",
             customModelName = prefs.getString(KEY_CUSTOM_MODEL_NAME, "llama4") ?: "llama4",
-            anythingLlmServerUrl = prefs.getString(KEY_ANYTHING_LLM_SERVER_URL, "") ?: "",
-            anythingLlmApiKey = prefs.getString(KEY_ANYTHING_LLM_API_KEY, "") ?: "",
-            anythingLlmWorkspaceSlug = prefs.getString(KEY_ANYTHING_LLM_WORKSPACE_SLUG, "") ?: "",
+            anythingLlmServerUrl = normalizeAnythingLlmServerUrl(prefs.getString(KEY_ANYTHING_LLM_SERVER_URL, "") ?: ""),
+            anythingLlmApiKey = normalizeAnythingLlmApiKey(prefs.getString(KEY_ANYTHING_LLM_API_KEY, "") ?: ""),
+            anythingLlmWorkspaceSlug = normalizeAnythingLlmWorkspaceSlug(prefs.getString(KEY_ANYTHING_LLM_WORKSPACE_SLUG, "") ?: ""),
             anythingLlmRuntimeEnabled = prefs.getBoolean(KEY_ANYTHING_LLM_RUNTIME_ENABLED, true),
             anythingLlmQueryMode = AnythingLlmQueryMode.valueOf(
                 prefs.getString(KEY_ANYTHING_LLM_QUERY_MODE, AnythingLlmQueryMode.QUERY.name)
@@ -249,13 +249,16 @@ class SettingsRepository(private val context: Context) {
             .distinct()
             .joinToString("\n")
     }
-    
+
     /**
      * Save settings
      */
     fun saveSettings(settings: ApiSettings) {
         val normalizedSettings = settings.copy(
-            geminiApiKey = normalizeGeminiKeyInput(settings.geminiApiKey)
+            geminiApiKey = normalizeGeminiKeyInput(settings.geminiApiKey),
+            anythingLlmServerUrl = normalizeAnythingLlmServerUrl(settings.anythingLlmServerUrl),
+            anythingLlmApiKey = normalizeAnythingLlmApiKey(settings.anythingLlmApiKey),
+            anythingLlmWorkspaceSlug = normalizeAnythingLlmWorkspaceSlug(settings.anythingLlmWorkspaceSlug)
         )
 
         prefs.edit().apply {

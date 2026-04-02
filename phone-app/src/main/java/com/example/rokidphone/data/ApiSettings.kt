@@ -1066,13 +1066,16 @@ fun ApiSettings.validateForDocs(): SettingsValidationResult {
     if (!anythingLlmRuntimeEnabled) {
         return SettingsValidationResult.InvalidConfiguration("AnythingLLM runtime is disabled")
     }
-    if (anythingLlmServerUrl.isBlank() || !isValidUrl(anythingLlmServerUrl)) {
+    val normalizedServerUrl = normalizeAnythingLlmServerUrl(anythingLlmServerUrl)
+    val normalizedApiKey = normalizeAnythingLlmApiKey(anythingLlmApiKey)
+    val normalizedWorkspaceSlug = normalizeAnythingLlmWorkspaceSlug(anythingLlmWorkspaceSlug)
+    if (normalizedServerUrl.isBlank() || !isValidUrl(normalizedServerUrl)) {
         return SettingsValidationResult.InvalidConfiguration("Invalid AnythingLLM server URL")
     }
-    if (anythingLlmApiKey.isBlank()) {
+    if (normalizedApiKey.isBlank()) {
         return SettingsValidationResult.InvalidConfiguration("AnythingLLM API key is missing")
     }
-    if (anythingLlmWorkspaceSlug.isBlank()) {
+    if (normalizedWorkspaceSlug.isBlank()) {
         return SettingsValidationResult.InvalidConfiguration("AnythingLLM workspace slug is missing")
     }
     return SettingsValidationResult.Valid

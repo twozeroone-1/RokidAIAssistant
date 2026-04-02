@@ -25,6 +25,21 @@ class ApiSettingsTest {
     }
 
     @Test
+    fun `toAnythingLlmSettings trims hidden whitespace from docs fields`() {
+        val settings = ApiSettings(
+            anythingLlmServerUrl = " https://docs.example.com/ \n",
+            anythingLlmApiKey = " sk-anything\nllm-key \r\n",
+            anythingLlmWorkspaceSlug = " ops-docs \n"
+        )
+
+        val docsSettings = settings.toAnythingLlmSettings()
+
+        assertThat(docsSettings.serverUrl).isEqualTo("https://docs.example.com/")
+        assertThat(docsSettings.apiKey).isEqualTo("sk-anythingllm-key")
+        assertThat(docsSettings.workspaceSlug).isEqualTo("ops-docs")
+    }
+
+    @Test
     fun `getCurrentApiKey returns key of selected provider`() {
         // 測試：應回傳目前選擇 provider 的 API key
         val settings = ApiSettings(

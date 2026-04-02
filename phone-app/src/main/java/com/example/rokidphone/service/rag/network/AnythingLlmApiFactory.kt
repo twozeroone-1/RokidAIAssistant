@@ -1,5 +1,6 @@
 package com.example.rokidphone.service.rag.network
 
+import com.example.rokidphone.data.normalizeAnythingLlmApiKey
 import okhttp3.OkHttpClient
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
@@ -12,13 +13,14 @@ object AnythingLlmApiFactory {
         apiKey: String,
     ): AnythingLlmApi {
         val normalizedServerUrl = normalizeServerUrl(serverUrl)
+        val normalizedApiKey = normalizeAnythingLlmApiKey(apiKey)
         val httpClient = OkHttpClient.Builder()
             .connectTimeout(15, TimeUnit.SECONDS)
             .readTimeout(30, TimeUnit.SECONDS)
             .writeTimeout(30, TimeUnit.SECONDS)
             .addInterceptor { chain ->
                 val request = chain.request().newBuilder()
-                    .header("Authorization", "Bearer $apiKey")
+                    .header("Authorization", "Bearer $normalizedApiKey")
                     .header("Accept", "application/json")
                     .build()
                 chain.proceed(request)
