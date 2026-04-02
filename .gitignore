@@ -92,3 +92,12 @@ credentials.json
 
 # Local SN auth binary (keep local, never commit)
 app/src/main/res/raw/sn_auth_file.lc
+
+# Root-level device debug captures
+/camtest-*.png
+/desktop-mirror-check.png
+/glasses-*.png
+/glasses-*.xml
+/phone-*.png
+/phone-*.xml
+/settings-ui*.xml
