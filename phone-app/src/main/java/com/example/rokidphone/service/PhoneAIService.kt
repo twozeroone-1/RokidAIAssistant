@@ -118,6 +118,7 @@ class PhoneAIService : Service() {
     // Current voice conversation ID (for grouping voice interactions)
     private var currentVoiceConversationId: String? = null
     private var currentLiveTurnConversationId: String? = null
+    private var lastSyncedResponseFontScalePercent: Int? = null
     
     // Track recording IDs currently being processed to prevent duplicate transcription
     private val processingRecordingIds = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
@@ -187,19 +188,22 @@ class PhoneAIService : Service() {
             Log.d(TAG, "Dedicated STT service created: ${sttService != null}, provider: ${validatedSettings.sttProvider}")
             
             Log.d(TAG, "Using AI provider: ${validatedSettings.aiProvider}, model: ${validatedSettings.aiModelId}")
+            var lastAppliedSettings = validatedSettings
             
             // Monitor settings changes
             serviceScope.launch {
                 settingsRepository.settingsFlow.collect { newSettings ->
                     Log.d(TAG, "Settings changed, updating services...")
                     val validatedNewSettings = validateAndCorrectSettings(newSettings)
-                    aiService = createAiService(validatedNewSettings)
-                    speechService = createSpeechService(validatedNewSettings)
-                    sttService = createSttService(validatedNewSettings)
-                    
-                    // Handle Live mode transitions
-                    handleLiveModeTransition(validatedNewSettings)
+                    if (PhoneSettingsSyncPolicy.requiresServiceRefresh(lastAppliedSettings, validatedNewSettings)) {
+                        aiService = createAiService(validatedNewSettings)
+                        speechService = createSpeechService(validatedNewSettings)
+                        sttService = createSttService(validatedNewSettings)
+                        handleLiveModeTransition(validatedNewSettings)
+                    }
                     syncSleepModeSetting(validatedNewSettings)
+                    syncResponseFontScaleSetting(validatedNewSettings)
+                    lastAppliedSettings = validatedNewSettings
                     
                     Log.d(TAG, "Services updated: ${validatedNewSettings.aiProvider}, STT: ${validatedNewSettings.sttProvider}")
                 }
@@ -242,6 +246,7 @@ class PhoneAIService : Service() {
                                 cxrManager?.initBluetooth(device)
                             }
                             syncSleepModeSetting(settingsRepository.getSettings())
+                            syncResponseFontScaleSetting(settingsRepository.getSettings(), force = true)
                         }
                     }
                 } catch (e: Exception) {
@@ -415,6 +420,22 @@ class PhoneAIService : Service() {
                 payload = settings.glassesSleepModeEnabled.toString()
             )
         )
+    }
+
+    private suspend fun syncResponseFontScaleSetting(
+        settings: ApiSettings,
+        force: Boolean = false
+    ) {
+        val normalizedPercent = ApiSettings.snapResponseFontScalePercent(settings.responseFontScalePercent)
+        if (bluetoothManager?.connectionState?.value != BluetoothConnectionState.CONNECTED) {
+            return
+        }
+        if (!PhoneSettingsSyncPolicy.shouldSyncResponseFontScale(lastSyncedResponseFontScalePercent, normalizedPercent, force)) {
+            return
+        }
+
+        bluetoothManager?.sendMessage(Message.responseFontScaleConfig(normalizedPercent))
+        lastSyncedResponseFontScalePercent = normalizedPercent
     }
     
     /**

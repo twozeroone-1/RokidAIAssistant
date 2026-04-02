@@ -3,6 +3,7 @@ package com.example.rokidphone.data
 import androidx.annotation.StringRes
 import com.example.rokidphone.R
 import com.example.rokidphone.service.stt.SttProvider
+import kotlin.math.roundToInt
 
 /**
  * AI Service Providers
@@ -715,6 +716,9 @@ data class ProviderConfig(
  * API Settings
  */
 data class ApiSettings(
+    // Glasses response text scale
+    val responseFontScalePercent: Int = DEFAULT_RESPONSE_FONT_SCALE_PERCENT,
+
     // AI Chat settings
     val aiProvider: AiProvider = AiProvider.GEMINI,
     val aiModelId: String = "gemini-2.5-flash",
@@ -862,6 +866,28 @@ data class ApiSettings(
     // Replace most standby/progress text on glasses with a compact stage indicator.
     val glassesSleepModeEnabled: Boolean = false
 ) {
+    companion object {
+        const val MIN_RESPONSE_FONT_SCALE_PERCENT = 50
+        const val MAX_RESPONSE_FONT_SCALE_PERCENT = 140
+        const val DEFAULT_RESPONSE_FONT_SCALE_PERCENT = 100
+        const val RESPONSE_FONT_SCALE_STEP_PERCENT = 5
+
+        fun clampResponseFontScalePercent(value: Int): Int {
+            return value.coerceIn(
+                MIN_RESPONSE_FONT_SCALE_PERCENT,
+                MAX_RESPONSE_FONT_SCALE_PERCENT
+            )
+        }
+
+        fun snapResponseFontScalePercent(value: Int): Int {
+            val clampedValue = clampResponseFontScalePercent(value)
+            val offset = clampedValue - MIN_RESPONSE_FONT_SCALE_PERCENT
+            val snappedOffset = ((offset.toFloat() / RESPONSE_FONT_SCALE_STEP_PERCENT).roundToInt()) *
+                RESPONSE_FONT_SCALE_STEP_PERCENT
+            return clampResponseFontScalePercent(MIN_RESPONSE_FONT_SCALE_PERCENT + snappedOffset)
+        }
+    }
+
     /**
      * Parse Gemini API key input as a key pool.
      * Accepts both single-line and multiline input, trims blanks, and removes duplicates.

@@ -124,8 +124,13 @@ data class Message(
             type = MessageType.DISPLAY_TEXT,
             payload = text
         )
-        
+
         fun displayClear() = Message(type = MessageType.DISPLAY_CLEAR)
+
+        fun responseFontScaleConfig(percent: Int) = Message(
+            type = MessageType.RESPONSE_FONT_SCALE_CONFIG,
+            payload = percent.toString()
+        )
 
         fun photoData(photoChunk: ByteArray) = Message(
             type = MessageType.PHOTO_DATA,

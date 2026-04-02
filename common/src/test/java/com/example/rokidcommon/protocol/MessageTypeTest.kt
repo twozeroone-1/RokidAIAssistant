@@ -49,6 +49,7 @@ class MessageTypeTest {
         assertThat(MessageType.DISPLAY_CLEAR.code).isEqualTo(0x31)
         assertThat(MessageType.DISPLAY_STATUS.code).isEqualTo(0x32)
         assertThat(MessageType.SLEEP_MODE_CONFIG.code).isEqualTo(0x33)
+        assertThat(MessageType.RESPONSE_FONT_SCALE_CONFIG.code).isEqualTo(0x34)
     }
 
     @Test
@@ -100,8 +101,8 @@ class MessageTypeTest {
     @Test
     fun `total enum count matches expected`() {
         // Test: total number of MessageType entries
-        // Connection(5) + Voice(6) + AI(5) + Display(4) + Photo(8) + Live(4) + System(3) = 35
-        assertThat(MessageType.entries.size).isEqualTo(35)
+        // Connection(5) + Voice(6) + AI(5) + Display(5) + Photo(8) + Live(4) + System(3) = 36
+        assertThat(MessageType.entries.size).isEqualTo(36)
     }
 
     // ==================== fromCode() ====================
@@ -112,6 +113,7 @@ class MessageTypeTest {
         assertThat(MessageType.fromCode(0x00)).isEqualTo(MessageType.HANDSHAKE)
         assertThat(MessageType.fromCode(0x10)).isEqualTo(MessageType.VOICE_START)
         assertThat(MessageType.fromCode(0x21)).isEqualTo(MessageType.AI_RESPONSE_TEXT)
+        assertThat(MessageType.fromCode(0x34)).isEqualTo(MessageType.RESPONSE_FONT_SCALE_CONFIG)
         assertThat(MessageType.fromCode(0x41)).isEqualTo(MessageType.PHOTO_DATA)
         assertThat(MessageType.fromCode(0x50)).isEqualTo(MessageType.LIVE_SESSION_START)
         assertThat(MessageType.fromCode(0xFF)).isEqualTo(MessageType.SYSTEM_ERROR)

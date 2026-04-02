@@ -41,6 +41,8 @@ data class GlassesUiState(
     val isAwaitingAnalysis: Boolean = false,
     val hasVisibleOutput: Boolean = false,
     val sleepModeEnabled: Boolean = false,
+    val responseFontScalePercent: Int = DEFAULT_RESPONSE_FONT_SCALE_PERCENT,
+    val displayUsesResponseFontScale: Boolean = false,
     val displayText: String = "",
     val hintText: String = "",
     val connectionState: ConnectionState = ConnectionState.DISCONNECTED,
@@ -83,6 +85,11 @@ class GlassesViewModel(
         private const val MAX_CHARS_PER_PAGE = 120
         private const val MAX_LINES_PER_PAGE = 4
     }
+
+    private enum class ResponseDisplayMode {
+        CHAT,
+        PHOTO_ANALYSIS
+    }
     
     private val _uiState = MutableStateFlow(GlassesUiState(
         displayText = context.getString(R.string.say_hey_rokid),
@@ -93,6 +100,7 @@ class GlassesViewModel(
     // Store full AI response for pagination
     private var fullAiResponse: String = ""
     private var responsePages: List<String> = emptyList()
+    private var currentResponseDisplayMode = ResponseDisplayMode.CHAT
     
     private var audioRecord: AudioRecord? = null
     private var recordingJob: Job? = null
@@ -532,6 +540,7 @@ class GlassesViewModel(
                     isSendingInput = false,
                     isAwaitingAnalysis = true,
                     hasVisibleOutput = false,
+                    displayUsesResponseFontScale = false,
                     displayText = message.payload ?: context.getString(R.string.processing)
                 ) }
             }
@@ -543,6 +552,7 @@ class GlassesViewModel(
                     isSendingInput = false,
                     isAwaitingAnalysis = true,
                     hasVisibleOutput = false,
+                    displayUsesResponseFontScale = false,
                     displayText = context.getString(R.string.you_said, message.payload ?: "")
                 ) }
             }
@@ -564,6 +574,7 @@ class GlassesViewModel(
                     isSendingInput = false,
                     isAwaitingAnalysis = false,
                     hasVisibleOutput = true,
+                    displayUsesResponseFontScale = false,
                     displayText = context.getString(R.string.error_prefix, message.payload ?: ""),
                     hintText = context.getString(R.string.please_try_again)
                 ) }
@@ -572,6 +583,7 @@ class GlassesViewModel(
             MessageType.DISPLAY_TEXT -> {
                 _uiState.update { it.copy(
                     hasVisibleOutput = true,
+                    displayUsesResponseFontScale = false,
                     displayText = message.payload ?: ""
                 ) }
             }
@@ -581,6 +593,7 @@ class GlassesViewModel(
                     isSendingInput = false,
                     isAwaitingAnalysis = false,
                     hasVisibleOutput = false,
+                    displayUsesResponseFontScale = false,
                     displayText = "",
                     hintText = context.getString(R.string.tap_touchpad_start)
                 ) }
@@ -592,6 +605,14 @@ class GlassesViewModel(
                         sleepModeEnabled = message.payload?.equals("true", ignoreCase = true) == true
                     )
                 }
+            }
+
+            MessageType.RESPONSE_FONT_SCALE_CONFIG -> {
+                val syncedPercent = snapResponseFontScalePercent(
+                    message.payload?.toIntOrNull() ?: DEFAULT_RESPONSE_FONT_SCALE_PERCENT
+                )
+                _uiState.update { it.copy(responseFontScalePercent = syncedPercent) }
+                reapplyCurrentResponseLayout()
             }
             
             MessageType.HEARTBEAT -> {
@@ -616,6 +637,7 @@ class GlassesViewModel(
                 isLiveModeActive = true
                 _uiState.update { it.copy(
                     isLiveModeActive = true,
+                    displayUsesResponseFontScale = false,
                     displayText = "🎙️ Live mode activated",
                     hintText = "Real-time voice conversation...",
                     liveTranscription = "",
@@ -632,6 +654,7 @@ class GlassesViewModel(
                 stopVideoStreaming()
                 _uiState.update { it.copy(
                     isLiveModeActive = false,
+                    displayUsesResponseFontScale = false,
                     displayText = "Live mode ended",
                     hintText = context.getString(R.string.tap_touchpad_start),
                     liveTranscription = "",
@@ -646,6 +669,7 @@ class GlassesViewModel(
                 _uiState.update { it.copy(
                     liveTranscription = text,
                     hasVisibleOutput = true,
+                    displayUsesResponseFontScale = false,
                     displayText = text
                 ) }
             }
@@ -664,25 +688,11 @@ class GlassesViewModel(
                     isAwaitingAnalysis = false,
                     hasVisibleOutput = true
                 ) }
-                
-                // Display the analysis result (with pagination)
-                fullAiResponse = analysisText
-                responsePages = paginateText(analysisText)
-                val isPaginated = responsePages.size > 1
-                val pageIndicator = if (isPaginated) " (1/${responsePages.size})" else ""
-                val hintText = if (isPaginated) 
-                    context.getString(R.string.swipe_left_right_pages)
-                else 
-                    context.getString(R.string.tap_touchpad_start)
-                
-                _uiState.update { it.copy(
-                    displayText = responsePages[0] + pageIndicator,
-                    hintText = hintText,
-                    currentPage = 0,
-                    totalPages = responsePages.size,
-                    isPaginated = isPaginated,
-                    hasVisibleOutput = true
-                ) }
+
+                applyResponseDisplay(
+                    responseText = analysisText,
+                    mode = ResponseDisplayMode.PHOTO_ANALYSIS
+                )
             }
             
             MessageType.REMOTE_RECORD_START -> {
@@ -718,30 +728,10 @@ class GlassesViewModel(
      * Handle AI response text message with pagination support
      */
     private fun handleAiResponseText(message: Message) {
-        val responseText = message.payload ?: ""
-        fullAiResponse = responseText
-        responsePages = paginateText(responseText)
-        
-        val isPaginated = responsePages.size > 1
-        val displayText = if (responsePages.isNotEmpty()) responsePages[0] else responseText
-        val hintText = if (isPaginated) {
-            context.getString(R.string.swipe_for_more)
-        } else {
-            context.getString(R.string.tap_continue)
-        }
-        
-        _uiState.update { it.copy(
-            isProcessing = false,
-            isSendingInput = false,
-            isAwaitingAnalysis = false,
-            hasVisibleOutput = true,
-            aiResponse = responseText,
-            displayText = displayText,
-            hintText = hintText,
-            currentPage = 0,
-            totalPages = responsePages.size,
-            isPaginated = isPaginated
-        ) }
+        applyResponseDisplay(
+            responseText = message.payload ?: "",
+            mode = ResponseDisplayMode.CHAT
+        )
     }
     
     private fun playAudio(audioData: ByteArray) {
@@ -754,71 +744,71 @@ class GlassesViewModel(
      * Splits text into pages based on character limit and line count
      */
     private fun paginateText(text: String): List<String> {
-        if (text.length <= MAX_CHARS_PER_PAGE) {
-            return listOf(text)
+        return paginateResponseText(
+            text = text,
+            fontScalePercent = _uiState.value.responseFontScalePercent,
+            baseMaxCharsPerPage = MAX_CHARS_PER_PAGE,
+            maxLinesPerPage = MAX_LINES_PER_PAGE
+        )
+    }
+
+    private fun applyResponseDisplay(
+        responseText: String,
+        mode: ResponseDisplayMode,
+        preserveCurrentPage: Boolean = false
+    ) {
+        fullAiResponse = responseText
+        currentResponseDisplayMode = mode
+        responsePages = paginateText(responseText)
+
+        val isPaginated = responsePages.size > 1
+        val targetPage = if (preserveCurrentPage) {
+            _uiState.value.currentPage.coerceAtMost((responsePages.size - 1).coerceAtLeast(0))
+        } else {
+            0
         }
-        
-        val pages = mutableListOf<String>()
-        val words = text.split(" ", "，", "。", "、", "！", "？")
-        var currentPage = StringBuilder()
-        var lineCount = 0
-        var charCount = 0
-        
-        for (word in words) {
-            val wordWithSpace = if (currentPage.isEmpty()) word else " $word"
-            val newCharCount = charCount + wordWithSpace.length
-            
-            // Check if adding this word would exceed limits
-            if (newCharCount > MAX_CHARS_PER_PAGE || lineCount >= MAX_LINES_PER_PAGE) {
-                if (currentPage.isNotEmpty()) {
-                    pages.add(currentPage.toString().trim())
-                    currentPage = StringBuilder()
-                    charCount = 0
-                    lineCount = 0
-                }
+        val pageText = responsePages.getOrElse(targetPage) { responseText }
+        val displayText = if (mode == ResponseDisplayMode.PHOTO_ANALYSIS && isPaginated && targetPage == 0) {
+            "$pageText (1/${responsePages.size})"
+        } else {
+            pageText
+        }
+        val hintText = when (mode) {
+            ResponseDisplayMode.CHAT -> {
+                if (isPaginated) context.getString(R.string.swipe_for_more)
+                else context.getString(R.string.tap_continue)
             }
-            
-            currentPage.append(wordWithSpace)
-            charCount = currentPage.length
-            
-            // Count newlines for line tracking
-            if (word.contains("\n")) {
-                lineCount += word.count { it == '\n' }
-            }
-        }
-        
-        // Add remaining text
-        if (currentPage.isNotEmpty()) {
-            pages.add(currentPage.toString().trim())
-        }
-        
-        // If simple word splitting didn't work well, use character-based splitting
-        if (pages.isEmpty() || (pages.size == 1 && text.length > MAX_CHARS_PER_PAGE)) {
-            pages.clear()
-            var i = 0
-            while (i < text.length) {
-                val end = minOf(i + MAX_CHARS_PER_PAGE, text.length)
-                // Try to break at natural boundaries
-                var breakPoint = end
-                if (end < text.length) {
-                    val lastSpace = text.lastIndexOf(' ', end)
-                    val lastPunctuation = maxOf(
-                        text.lastIndexOf('。', end),
-                        text.lastIndexOf('，', end),
-                        text.lastIndexOf('.', end),
-                        text.lastIndexOf(',', end)
-                    )
-                    val naturalBreak = maxOf(lastSpace, lastPunctuation)
-                    if (naturalBreak > i) {
-                        breakPoint = naturalBreak + 1
-                    }
-                }
-                pages.add(text.substring(i, breakPoint).trim())
-                i = breakPoint
+            ResponseDisplayMode.PHOTO_ANALYSIS -> {
+                if (isPaginated) context.getString(R.string.swipe_left_right_pages)
+                else context.getString(R.string.tap_touchpad_start)
             }
         }
-        
-        return pages
+
+        _uiState.update { it.copy(
+            isProcessing = false,
+            isSendingInput = false,
+            isAwaitingAnalysis = false,
+            hasVisibleOutput = true,
+            aiResponse = responseText,
+            displayUsesResponseFontScale = true,
+            displayText = displayText,
+            hintText = hintText,
+            currentPage = targetPage,
+            totalPages = responsePages.size.coerceAtLeast(1),
+            isPaginated = isPaginated
+        ) }
+    }
+
+    private fun reapplyCurrentResponseLayout() {
+        if (!_uiState.value.displayUsesResponseFontScale || fullAiResponse.isBlank()) {
+            return
+        }
+
+        applyResponseDisplay(
+            responseText = fullAiResponse,
+            mode = currentResponseDisplayMode,
+            preserveCurrentPage = true
+        )
     }
     
     /**

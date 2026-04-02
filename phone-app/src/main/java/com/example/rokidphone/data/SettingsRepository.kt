@@ -66,6 +66,7 @@ class SettingsRepository(private val context: Context) {
         private const val KEY_PUSH_RECORDING_TO_GLASSES = "push_recording_to_glasses"
         private const val KEY_ALWAYS_START_NEW_AI_SESSION = "always_start_new_ai_session"
         private const val KEY_GLASSES_SLEEP_MODE_ENABLED = "glasses_sleep_mode_enabled"
+        private const val KEY_RESPONSE_FONT_SCALE_PERCENT = "response_font_scale_percent"
         
         // Keys for TTS settings
         private const val KEY_AUTO_READ_RESPONSES_ALOUD = "auto_read_responses_aloud"
@@ -138,6 +139,12 @@ class SettingsRepository(private val context: Context) {
         }
         
         return ApiSettings(
+            responseFontScalePercent = ApiSettings.snapResponseFontScalePercent(
+                prefs.getInt(
+                    KEY_RESPONSE_FONT_SCALE_PERCENT,
+                    ApiSettings.DEFAULT_RESPONSE_FONT_SCALE_PERCENT
+                )
+            ),
             aiProvider = AiProvider.fromName(
                 prefs.getString(KEY_AI_PROVIDER, AiProvider.GEMINI.name) ?: AiProvider.GEMINI.name
             ),
@@ -257,6 +264,7 @@ class SettingsRepository(private val context: Context) {
      */
     fun saveSettings(settings: ApiSettings) {
         val normalizedSettings = settings.copy(
+            responseFontScalePercent = ApiSettings.snapResponseFontScalePercent(settings.responseFontScalePercent),
             geminiApiKey = normalizeGeminiKeyInput(settings.geminiApiKey),
             anythingLlmServerUrl = normalizeAnythingLlmServerUrl(settings.anythingLlmServerUrl),
             anythingLlmApiKey = normalizeAnythingLlmApiKey(settings.anythingLlmApiKey),
@@ -308,6 +316,7 @@ class SettingsRepository(private val context: Context) {
             putBoolean(KEY_PUSH_RECORDING_TO_GLASSES, normalizedSettings.pushRecordingToGlasses)
             putBoolean(KEY_ALWAYS_START_NEW_AI_SESSION, normalizedSettings.alwaysStartNewAiSession)
             putBoolean(KEY_GLASSES_SLEEP_MODE_ENABLED, normalizedSettings.glassesSleepModeEnabled)
+            putInt(KEY_RESPONSE_FONT_SCALE_PERCENT, normalizedSettings.responseFontScalePercent)
             putFloat(KEY_TEMPERATURE, normalizedSettings.temperature)
             putInt(KEY_MAX_TOKENS, normalizedSettings.maxTokens)
             putFloat(KEY_TOP_P, normalizedSettings.topP)

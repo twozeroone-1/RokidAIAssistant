@@ -7,10 +7,25 @@ import org.junit.Test
 class ApiSettingsTest {
 
     @Test
+    fun `responseFontScalePercent defaults to 100`() {
+        val settings = ApiSettings()
+
+        assertThat(settings.responseFontScalePercent).isEqualTo(100)
+    }
+
+    @Test
     fun `alwaysStartNewAiSession defaults to false`() {
         val settings = ApiSettings()
 
         assertThat(settings.alwaysStartNewAiSession).isFalse()
+    }
+
+    @Test
+    fun `copy preserves responseFontScalePercent unless overridden`() {
+        val original = ApiSettings(responseFontScalePercent = 132)
+        val copied = original.copy(aiModelId = "gemini-3.1-flash-lite-preview")
+
+        assertThat(copied.responseFontScalePercent).isEqualTo(132)
     }
 
     @Test

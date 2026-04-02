@@ -38,6 +38,7 @@ import com.example.rokidglasses.ui.theme.RokidGlassesTheme
 import com.example.rokidglasses.viewmodel.GlassesDisplayStage
 import com.example.rokidglasses.viewmodel.GlassesViewModel
 import com.example.rokidglasses.viewmodel.deriveDisplayStage
+import com.example.rokidglasses.viewmodel.responseFontScaleMultiplier
 import com.example.rokidglasses.viewmodel.toSleepModeSnapshot
 
 class MainActivity : ComponentActivity() {
@@ -356,6 +357,8 @@ fun GlassesMainScreen(
             MainDisplayArea(
                 displayText = uiState.displayText,
                 isProcessing = uiState.isProcessing && !shouldUseSleepMode,
+                responseFontScalePercent = uiState.responseFontScalePercent,
+                useResponseFontScale = uiState.displayUsesResponseFontScale,
                 isPaginated = uiState.isPaginated,
                 currentPage = uiState.currentPage,
                 totalPages = uiState.totalPages,
@@ -550,11 +553,21 @@ fun StatusDot(
 fun MainDisplayArea(
     displayText: String,
     isProcessing: Boolean,
+    responseFontScalePercent: Int,
+    useResponseFontScale: Boolean,
     isPaginated: Boolean = false,
     currentPage: Int = 0,
     totalPages: Int = 1,
     modifier: Modifier = Modifier
 ) {
+    val responseScale = if (useResponseFontScale) {
+        responseFontScaleMultiplier(responseFontScalePercent)
+    } else {
+        1f
+    }
+    val fontSize = if (isPaginated) 20f * responseScale else 24f * responseScale
+    val lineHeight = if (isPaginated) 28f * responseScale else 32f * responseScale
+
     Column(
         modifier = modifier
             .fillMaxWidth()
@@ -591,10 +604,10 @@ fun MainDisplayArea(
             Text(
                 text = text,
                 color = Color.White,
-                fontSize = if (isPaginated) 20.sp else 24.sp,
+                fontSize = fontSize.sp,
                 fontWeight = FontWeight.Medium,
                 textAlign = TextAlign.Center,
-                lineHeight = if (isPaginated) 28.sp else 32.sp,
+                lineHeight = lineHeight.sp,
                 modifier = Modifier.fillMaxWidth()
             )
         }

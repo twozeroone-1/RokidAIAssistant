@@ -11,6 +11,40 @@ import org.robolectric.RobolectricTestRunner
 class SettingsRepositoryTest {
 
     @Test
+    fun `saveSettings persists glasses response font scale percent`() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val repository = SettingsRepository(context)
+
+        repository.saveSettings(ApiSettings(responseFontScalePercent = 125))
+
+        val reloadedRepository = SettingsRepository(context)
+
+        assertThat(reloadedRepository.getSettings().responseFontScalePercent).isEqualTo(125)
+    }
+
+    @Test
+    fun `saveSettings clamps glasses response font scale percent into supported range`() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val repository = SettingsRepository(context)
+
+        repository.saveSettings(ApiSettings(responseFontScalePercent = 20))
+        assertThat(SettingsRepository(context).getSettings().responseFontScalePercent).isEqualTo(50)
+
+        repository.saveSettings(ApiSettings(responseFontScalePercent = 400))
+        assertThat(SettingsRepository(context).getSettings().responseFontScalePercent).isEqualTo(140)
+    }
+
+    @Test
+    fun `saveSettings snaps glasses response font scale percent to 5 percent steps`() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val repository = SettingsRepository(context)
+
+        repository.saveSettings(ApiSettings(responseFontScalePercent = 87))
+
+        assertThat(SettingsRepository(context).getSettings().responseFontScalePercent).isEqualTo(85)
+    }
+
+    @Test
     fun `saveSettings normalizes multiline Gemini key pool`() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val repository = SettingsRepository(context)

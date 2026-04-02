@@ -31,6 +31,7 @@ import com.example.rokidphone.service.ai.AiServiceFactory
 import com.example.rokidphone.service.stt.SttProvider
 import com.example.rokidphone.service.stt.SttServiceFactory
 import kotlinx.coroutines.launch
+import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -348,6 +349,31 @@ fun SettingsScreen(
                         checked = settings.glassesSleepModeEnabled,
                         onCheckedChange = { onSettingsChange(settings.copy(glassesSleepModeEnabled = it)) }
                     )
+                    HorizontalDivider()
+                    SettingsSliderRow(
+                        title = stringResource(R.string.glasses_response_font_scale),
+                        subtitle = stringResource(R.string.glasses_response_font_scale_description),
+                        value = settings.responseFontScalePercent.toFloat(),
+                        valueRange = ApiSettings.MIN_RESPONSE_FONT_SCALE_PERCENT.toFloat()..
+                            ApiSettings.MAX_RESPONSE_FONT_SCALE_PERCENT.toFloat(),
+                        steps = ((ApiSettings.MAX_RESPONSE_FONT_SCALE_PERCENT -
+                            ApiSettings.MIN_RESPONSE_FONT_SCALE_PERCENT) /
+                            ApiSettings.RESPONSE_FONT_SCALE_STEP_PERCENT) - 1,
+                        valueText = stringResource(
+                            R.string.glasses_response_font_scale_value,
+                            settings.responseFontScalePercent
+                        ),
+                        onValueChange = { rawValue ->
+                            val snappedValue = ApiSettings.snapResponseFontScalePercent(rawValue.roundToInt())
+                            if (snappedValue != settings.responseFontScalePercent) {
+                                onSettingsChange(
+                                    settings.copy(
+                                        responseFontScalePercent = snappedValue
+                                    )
+                                )
+                            }
+                        }
+                    )
                 }
             }
             
@@ -655,6 +681,54 @@ fun SettingsRowWithSwitch(
         Switch(
             checked = checked,
             onCheckedChange = onCheckedChange
+        )
+    }
+}
+
+@Composable
+fun SettingsSliderRow(
+    title: String,
+    subtitle: String,
+    value: Float,
+    valueRange: ClosedFloatingPointRange<Float>,
+    steps: Int,
+    valueText: String,
+    onValueChange: (Float) -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 12.dp, horizontal = 4.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = androidx.compose.ui.text.font.FontWeight.Medium
+                )
+                Text(
+                    text = subtitle,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Spacer(modifier = Modifier.width(16.dp))
+            Text(
+                text = valueText,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.primary
+            )
+        }
+        Slider(
+            value = value,
+            onValueChange = onValueChange,
+            valueRange = valueRange,
+            steps = steps
         )
     }
 }

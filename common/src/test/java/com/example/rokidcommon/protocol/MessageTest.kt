@@ -125,6 +125,14 @@ class MessageTest {
         assertThat(msg.type).isEqualTo(MessageType.DISPLAY_CLEAR)
     }
 
+    @Test
+    fun `responseFontScaleConfig creates RESPONSE_FONT_SCALE_CONFIG message`() {
+        val msg = Message.responseFontScaleConfig(128)
+
+        assertThat(msg.type).isEqualTo(MessageType.RESPONSE_FONT_SCALE_CONFIG)
+        assertThat(msg.payload).isEqualTo("128")
+    }
+
     // ==================== JSON serialization ====================
 
     @Test

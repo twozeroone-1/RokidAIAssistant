@@ -98,6 +98,9 @@
     <string name="push_recording_to_glasses_description">휴대폰 녹음 결과(음성 인식 및 AI 응답)를 안경 화면에 전송</string>
     <string name="glasses_sleep_mode">안경 최대절전모드</string>
     <string name="glasses_sleep_mode_description">대기와 진행 텍스트를 숨기고 간단한 점 표시기로 대체합니다</string>
+    <string name="glasses_response_font_scale">안경 응답 글자 크기</string>
+    <string name="glasses_response_font_scale_description">안경에 표시되는 AI 응답 본문 크기만 조절합니다. 연결 중이면 바로 반영됩니다</string>
+    <string name="glasses_response_font_scale_value">%1$d%%</string>
     <string name="always_start_new_ai_session">항상 새 AI 세션 시작</string>
     <string name="always_start_new_ai_session_description">기록은 남기되, 모든 AI 요청을 이전 대화 문맥 없이 새 세션으로 실행합니다</string>
     
