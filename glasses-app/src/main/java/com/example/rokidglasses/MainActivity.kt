@@ -150,6 +150,8 @@ class MainActivity : ComponentActivity() {
                     true // Consume subsequent repeats
                 }
             }
+            // Some Rokid firmware routes the touchpad tap through NOTIFICATION instead of DPAD_CENTER.
+            KeyEvent.KEYCODE_NOTIFICATION -> true
             // Camera button - take photo and send to phone for AI analysis
             KeyEvent.KEYCODE_CAMERA, 27, 
             KeyEvent.KEYCODE_FOCUS, // Some devices use focus key for camera
@@ -182,6 +184,13 @@ class MainActivity : ComponentActivity() {
             KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER -> {
                 // Only handle short tap (not long press which was already handled)
                 if (event?.eventTime?.minus(event.downTime) ?: 0 < 500) {
+                    viewModel.handlePrimaryAction()
+                }
+                true
+            }
+            KeyEvent.KEYCODE_NOTIFICATION -> {
+                if (event?.eventTime?.minus(event.downTime) ?: 0 < 500) {
+                    android.util.Log.d("MainActivity", "Touchpad alternate key mapped to primary action: $keyCode")
                     viewModel.handlePrimaryAction()
                 }
                 true

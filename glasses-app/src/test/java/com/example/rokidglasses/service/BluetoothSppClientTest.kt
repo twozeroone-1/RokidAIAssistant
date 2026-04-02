@@ -22,6 +22,7 @@ import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.io.InputStream
+import java.util.concurrent.atomic.AtomicLong
 import java.util.UUID
 
 @RunWith(RobolectricTestRunner::class)
@@ -50,6 +51,54 @@ class BluetoothSppClientTest {
     @After
     fun tearDown() {
         scope.cancel()
+    }
+
+    private fun setConnectionState(state: BluetoothClientState) {
+        val stateField = BluetoothSppClient::class.java.getDeclaredField("_connectionState")
+        stateField.isAccessible = true
+        @Suppress("UNCHECKED_CAST")
+        val stateFlow =
+            stateField.get(client) as kotlinx.coroutines.flow.MutableStateFlow<BluetoothClientState>
+        stateFlow.value = state
+    }
+
+    private fun setConnectedDeviceName(name: String?) {
+        val nameField = BluetoothSppClient::class.java.getDeclaredField("_connectedDeviceName")
+        nameField.isAccessible = true
+        @Suppress("UNCHECKED_CAST")
+        val nameFlow = nameField.get(client) as kotlinx.coroutines.flow.MutableStateFlow<String?>
+        nameFlow.value = name
+    }
+
+    private fun setConnectionGeneration(value: Long) {
+        val generationField = BluetoothSppClient::class.java.getDeclaredField("connectionGeneration")
+        generationField.isAccessible = true
+        val generation = generationField.get(client) as AtomicLong
+        generation.set(value)
+    }
+
+    private suspend fun invokeHandleDisconnection(generation: Long) {
+        val method = BluetoothSppClient::class.java.getDeclaredMethod(
+            "handleDisconnection",
+            Long::class.javaPrimitiveType,
+            kotlin.coroutines.Continuation::class.java
+        )
+        method.isAccessible = true
+        kotlin.coroutines.intrinsics.suspendCoroutineUninterceptedOrReturn<Unit> { cont ->
+            method.invoke(client, generation, cont)
+        }
+    }
+
+    private suspend fun invokeHandleConnectionLost(generation: Long) {
+        val method = BluetoothSppClient::class.java.getDeclaredMethod(
+            "handleConnectionLost",
+            Long::class.javaPrimitiveType,
+            kotlin.coroutines.Continuation::class.java
+        )
+        method.isAccessible = true
+        kotlin.coroutines.intrinsics.suspendCoroutineUninterceptedOrReturn<Unit> { cont ->
+            method.invoke(client, generation, cont)
+        }
     }
 
     // ==================== BluetoothClientState enum ====================
@@ -146,12 +195,7 @@ class BluetoothSppClientTest {
         // 測試：已在連線中時不會重複連線
         val device = mockk<BluetoothDevice>(relaxed = true)
 
-        // Use reflection to set state to CONNECTING
-        val stateField = BluetoothSppClient::class.java.getDeclaredField("_connectionState")
-        stateField.isAccessible = true
-        @Suppress("UNCHECKED_CAST")
-        val stateFlow = stateField.get(client) as kotlinx.coroutines.flow.MutableStateFlow<BluetoothClientState>
-        stateFlow.value = BluetoothClientState.CONNECTING
+        setConnectionState(BluetoothClientState.CONNECTING)
 
         // connect should return immediately without launching a new job
         client.connect(device)
@@ -165,11 +209,7 @@ class BluetoothSppClientTest {
         // 測試：已連線時不會重複連線
         val device = mockk<BluetoothDevice>(relaxed = true)
 
-        val stateField = BluetoothSppClient::class.java.getDeclaredField("_connectionState")
-        stateField.isAccessible = true
-        @Suppress("UNCHECKED_CAST")
-        val stateFlow = stateField.get(client) as kotlinx.coroutines.flow.MutableStateFlow<BluetoothClientState>
-        stateFlow.value = BluetoothClientState.CONNECTED
+        setConnectionState(BluetoothClientState.CONNECTED)
 
         client.connect(device)
 
@@ -182,17 +222,8 @@ class BluetoothSppClientTest {
     @Test
     fun `disconnect sets state to DISCONNECTED and clears device name`() {
         // 測試：disconnect 會清除連線狀態與裝置名稱
-        val stateField = BluetoothSppClient::class.java.getDeclaredField("_connectionState")
-        stateField.isAccessible = true
-        @Suppress("UNCHECKED_CAST")
-        val stateFlow = stateField.get(client) as kotlinx.coroutines.flow.MutableStateFlow<BluetoothClientState>
-        stateFlow.value = BluetoothClientState.CONNECTED
-
-        val nameField = BluetoothSppClient::class.java.getDeclaredField("_connectedDeviceName")
-        nameField.isAccessible = true
-        @Suppress("UNCHECKED_CAST")
-        val nameFlow = nameField.get(client) as kotlinx.coroutines.flow.MutableStateFlow<String?>
-        nameFlow.value = "Test Phone"
+        setConnectionState(BluetoothClientState.CONNECTED)
+        setConnectedDeviceName("Test Phone")
 
         client.disconnect()
 
@@ -233,11 +264,7 @@ class BluetoothSppClientTest {
         val outputBytes = ByteArrayOutputStream()
 
         // Set up connected state via reflection
-        val stateField = BluetoothSppClient::class.java.getDeclaredField("_connectionState")
-        stateField.isAccessible = true
-        @Suppress("UNCHECKED_CAST")
-        val stateFlow = stateField.get(client) as kotlinx.coroutines.flow.MutableStateFlow<BluetoothClientState>
-        stateFlow.value = BluetoothClientState.CONNECTED
+        setConnectionState(BluetoothClientState.CONNECTED)
 
         val osField = BluetoothSppClient::class.java.getDeclaredField("outputStream")
         osField.isAccessible = true
@@ -258,11 +285,7 @@ class BluetoothSppClientTest {
         val mockOutputStream = mockk<java.io.OutputStream>(relaxed = true)
         every { mockOutputStream.write(any<ByteArray>()) } throws IOException("connection lost")
 
-        val stateField = BluetoothSppClient::class.java.getDeclaredField("_connectionState")
-        stateField.isAccessible = true
-        @Suppress("UNCHECKED_CAST")
-        val stateFlow = stateField.get(client) as kotlinx.coroutines.flow.MutableStateFlow<BluetoothClientState>
-        stateFlow.value = BluetoothClientState.CONNECTED
+        setConnectionState(BluetoothClientState.CONNECTED)
 
         val osField = BluetoothSppClient::class.java.getDeclaredField("outputStream")
         osField.isAccessible = true
@@ -280,17 +303,8 @@ class BluetoothSppClientTest {
     fun `handleDisconnection skips when already disconnected`() = scope.runTest {
         // 測試：已是 DISCONNECTED 狀態時不做任何處理
         assertThat(client.connectionState.value).isEqualTo(BluetoothClientState.DISCONNECTED)
-
-        // handleDisconnection is a suspend fun, so the JVM method takes a Continuation param
-        val method = BluetoothSppClient::class.java.getDeclaredMethod(
-            "handleDisconnection", kotlin.coroutines.Continuation::class.java
-        )
-        method.isAccessible = true
-
-        // Invoke suspend function via kotlin.coroutines.intrinsics
-        val result = kotlin.coroutines.intrinsics.suspendCoroutineUninterceptedOrReturn<Unit> { cont ->
-            method.invoke(client, cont)
-        }
+        setConnectionGeneration(1L)
+        invokeHandleDisconnection(1L)
 
         // State should still be DISCONNECTED
         assertThat(client.connectionState.value).isEqualTo(BluetoothClientState.DISCONNECTED)
@@ -299,29 +313,41 @@ class BluetoothSppClientTest {
     @Test
     fun `handleDisconnection cancels heartbeat and sets disconnected`() = scope.runTest {
         // 測試：handleDisconnection 會取消 heartbeat 並設定 DISCONNECTED
-        val stateField = BluetoothSppClient::class.java.getDeclaredField("_connectionState")
-        stateField.isAccessible = true
-        @Suppress("UNCHECKED_CAST")
-        val stateFlow = stateField.get(client) as kotlinx.coroutines.flow.MutableStateFlow<BluetoothClientState>
-        stateFlow.value = BluetoothClientState.CONNECTED
+        setConnectionState(BluetoothClientState.CONNECTED)
+        setConnectedDeviceName("Galaxy S8")
+        setConnectionGeneration(3L)
 
-        // handleDisconnection is a suspend fun
-        val method = BluetoothSppClient::class.java.getDeclaredMethod(
-            "handleDisconnection", kotlin.coroutines.Continuation::class.java
-        )
-        method.isAccessible = true
-
-        // Launch as coroutine so the suspend machinery works
-        val job = scope.launch {
-            kotlin.coroutines.intrinsics.suspendCoroutineUninterceptedOrReturn<Unit> { cont ->
-                method.invoke(client, cont)
-            }
-        }
-        // Let coroutines run
+        scope.launch { invokeHandleDisconnection(3L) }
         advanceUntilIdle()
 
         assertThat(client.connectionState.value).isEqualTo(BluetoothClientState.DISCONNECTED)
         assertThat(client.connectedDeviceName.value).isNull()
+    }
+
+    @Test
+    fun `handleDisconnection ignores stale connection generation`() = scope.runTest {
+        setConnectionState(BluetoothClientState.CONNECTED)
+        setConnectedDeviceName("Galaxy S8")
+        setConnectionGeneration(7L)
+
+        scope.launch { invokeHandleDisconnection(6L) }
+        advanceUntilIdle()
+
+        assertThat(client.connectionState.value).isEqualTo(BluetoothClientState.CONNECTED)
+        assertThat(client.connectedDeviceName.value).isEqualTo("Galaxy S8")
+    }
+
+    @Test
+    fun `handleConnectionLost ignores stale connection generation`() = scope.runTest {
+        setConnectionState(BluetoothClientState.CONNECTED)
+        setConnectedDeviceName("Galaxy S8")
+        setConnectionGeneration(9L)
+
+        scope.launch { invokeHandleConnectionLost(8L) }
+        advanceUntilIdle()
+
+        assertThat(client.connectionState.value).isEqualTo(BluetoothClientState.CONNECTED)
+        assertThat(client.connectedDeviceName.value).isEqualTo("Galaxy S8")
     }
 
     // ==================== sendVoiceStart / sendVoiceEnd convenience ====================

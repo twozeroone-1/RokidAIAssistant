@@ -20,6 +20,7 @@ import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
 import java.util.UUID
+import java.util.concurrent.atomic.AtomicLong
 
 /**
  * Bluetooth Connection State
@@ -74,6 +75,9 @@ class BluetoothSppClient(
     // Last device we were connected to (for auto-reconnect)
     private var lastConnectedDevice: BluetoothDevice? = null
 
+    // Guards against stale connect/read/heartbeat coroutines mutating the current connection.
+    private val connectionGeneration = AtomicLong(0)
+
     /**
      * Safely get the device name with BLUETOOTH_CONNECT permission check.
      * Returns "unknown" if the permission is not granted.
@@ -127,12 +131,20 @@ class BluetoothSppClient(
             Log.w(TAG, "Already connecting or connected")
             return
         }
-        
+
+        val generation = connectionGeneration.incrementAndGet()
         connectJob?.cancel()
+        readJob?.cancel()
+        readJob = null
+        heartbeatJob?.cancel()
+        heartbeatJob = null
         connectJob = scope.launch(Dispatchers.IO) {
             var lastException: Exception? = null
             
             for (attempt in 1..maxRetries) {
+                if (!isCurrentGeneration(generation)) {
+                    return@launch
+                }
                 try {
                     _connectionState.value = BluetoothClientState.CONNECTING
                     Log.d(TAG, "Connecting to ${getSafeDeviceName(device)}... (attempt $attempt/$maxRetries)")
@@ -142,6 +154,9 @@ class BluetoothSppClient(
                     
                     // Wait a bit for discovery cancellation to take effect
                     delay(200)
+                    if (!isCurrentGeneration(generation)) {
+                        return@launch
+                    }
                     
                     // Close previous socket
                     closeSocket()
@@ -161,6 +176,11 @@ class BluetoothSppClient(
                     if (socket?.isConnected != true) {
                         throw IOException("Socket not connected after connect() call")
                     }
+
+                    if (!isCurrentGeneration(generation)) {
+                        closeSocket()
+                        return@launch
+                    }
                     
                     inputStream = socket?.inputStream
                     outputStream = socket?.outputStream
@@ -173,13 +193,17 @@ class BluetoothSppClient(
                     Log.d(TAG, "Connected to ${getSafeDeviceName(device)}")
                     
                     // Start reading messages
-                    startReading()
+                    startReading(generation)
                     
                     // Start heartbeat to keep connection alive
-                    startHeartbeat()
+                    startHeartbeat(generation)
                     return@launch // Connection successful, exit
                     
                 } catch (e: Exception) {
+                    if (!isCurrentGeneration(generation)) {
+                        closeSocket()
+                        return@launch
+                    }
                     Log.e(TAG, "Connection attempt $attempt failed: ${e.message}", e)
                     lastException = e
                     
@@ -192,11 +216,17 @@ class BluetoothSppClient(
                         val delayMs = 2500L + (attempt * 1500L)  // 4s, 5.5s, 7s...
                         Log.d(TAG, "Connection failed. Waiting ${delayMs}ms before retry $attempt/$maxRetries...")
                         delay(delayMs)
+                        if (!isCurrentGeneration(generation)) {
+                            return@launch
+                        }
                         
                         // Cancel any pending discovery operations before retry
                         try {
                             bluetoothAdapter?.cancelDiscovery()
                             delay(300)  // Brief pause for cancellation to take effect
+                            if (!isCurrentGeneration(generation)) {
+                                return@launch
+                            }
                         } catch (e2: Exception) {
                             Log.w(TAG, "Failed to cancel discovery: ${e2.message}")
                         }
@@ -309,10 +339,14 @@ class BluetoothSppClient(
      */
     fun disconnect() {
         Log.d(TAG, "Disconnecting...")
-        
+
+        connectionGeneration.incrementAndGet()
         connectJob?.cancel()
         readJob?.cancel()
         heartbeatJob?.cancel()
+        connectJob = null
+        readJob = null
+        heartbeatJob = null
         
         closeSocket()
         
@@ -325,15 +359,22 @@ class BluetoothSppClient(
      * Sends HEARTBEAT message every 10 seconds
      * Detects connection loss if too many heartbeats go unanswered
      */
-    private fun startHeartbeat() {
+    private fun startHeartbeat(generation: Long) {
         heartbeatJob?.cancel()
         missedHeartbeatCount = 0
         
         heartbeatJob = scope.launch(Dispatchers.IO) {
-            while (isActive && _connectionState.value == BluetoothClientState.CONNECTED) {
+            while (
+                isActive &&
+                isCurrentGeneration(generation) &&
+                _connectionState.value == BluetoothClientState.CONNECTED
+            ) {
                 delay(HEARTBEAT_INTERVAL)
                 
-                if (_connectionState.value == BluetoothClientState.CONNECTED) {
+                if (
+                    isCurrentGeneration(generation) &&
+                    _connectionState.value == BluetoothClientState.CONNECTED
+                ) {
                     try {
                         // Increment missed heartbeat count before sending
                         // This will be reset to 0 when we receive HEARTBEAT_ACK
@@ -347,7 +388,7 @@ class BluetoothSppClient(
                         if (missedHeartbeatCount >= MAX_MISSED_HEARTBEATS) {
                             Log.w(TAG, "Too many missed heartbeats ($missedHeartbeatCount), connection may be dead")
                             // Trigger reconnection
-                            handleConnectionLost()
+                            handleConnectionLost(generation)
                             break
                         }
                     } catch (e: Exception) {
@@ -370,7 +411,9 @@ class BluetoothSppClient(
      * Handle connection lost (too many missed heartbeats)
      * Attempts to reconnect to the last connected device
      */
-    private suspend fun handleConnectionLost() {
+    private suspend fun handleConnectionLost(generation: Long) {
+        if (!isCurrentGeneration(generation)) return
+
         Log.d(TAG, "Handling connection lost...")
         
         val deviceToReconnect = lastConnectedDevice
@@ -383,6 +426,7 @@ class BluetoothSppClient(
         if (deviceToReconnect != null) {
             Log.d(TAG, "Attempting to reconnect to ${getSafeDeviceName(deviceToReconnect)}...")
             delay(1000) // Wait a bit before reconnecting
+            if (!isCurrentGeneration(generation)) return
             connect(deviceToReconnect)
         }
     }
@@ -408,7 +452,7 @@ class BluetoothSppClient(
                 true
             } catch (e: IOException) {
                 Log.e(TAG, "Failed to send message", e)
-                handleDisconnection()
+                handleDisconnection(connectionGeneration.get())
                 false
             }
         }
@@ -435,13 +479,17 @@ class BluetoothSppClient(
     /**
      * Start reading messages
      */
-    private fun startReading() {
+    private fun startReading(generation: Long) {
         readJob?.cancel()
         readJob = scope.launch(Dispatchers.IO) {
             val buffer = StringBuilder()
             val readBuffer = ByteArray(4096)
             
-            while (isActive && _connectionState.value == BluetoothClientState.CONNECTED) {
+            while (
+                isActive &&
+                isCurrentGeneration(generation) &&
+                _connectionState.value == BluetoothClientState.CONNECTED
+            ) {
                 try {
                     val bytesRead = inputStream?.read(readBuffer) ?: -1
                     
@@ -470,7 +518,7 @@ class BluetoothSppClient(
                 }
             }
             
-            handleDisconnection()
+            handleDisconnection(generation)
         }
     }
     
@@ -539,7 +587,8 @@ class BluetoothSppClient(
     /**
      * Handle disconnection and attempt auto-reconnect
      */
-    private suspend fun handleDisconnection() {
+    private suspend fun handleDisconnection(generation: Long) {
+        if (!isCurrentGeneration(generation)) return
         if (_connectionState.value == BluetoothClientState.DISCONNECTED) return
         
         Log.d(TAG, "Handling disconnection...")
@@ -560,11 +609,17 @@ class BluetoothSppClient(
             // Wait for the phone server to restart its listening socket
             delay(2000)
             // Only reconnect if still disconnected (user may have manually triggered something)
-            if (_connectionState.value == BluetoothClientState.DISCONNECTED) {
+            if (
+                isCurrentGeneration(generation) &&
+                _connectionState.value == BluetoothClientState.DISCONNECTED
+            ) {
                 connect(deviceToReconnect)
             }
         }
     }
+
+    private fun isCurrentGeneration(generation: Long): Boolean =
+        connectionGeneration.get() == generation
     
     /**
      * Close socket and release all resources
