@@ -209,10 +209,8 @@ class OpenAiCompatibleService(
                 put("messages", messages)
                 put("temperature", temperature.toDouble())
                 
-                // Keep GPT-5 on the standard OpenAI-compatible field so third-party endpoints
-                // and existing request-shape tests continue to work. Only o-series reasoning
-                // models require the alternate token field here.
-                val requiresCompletionTokens = modelId.startsWith("o")
+                // GPT-5.x and o-series reasoning models use max_completion_tokens.
+                val requiresCompletionTokens = modelId.startsWith("o") || modelId.startsWith("gpt-5")
                 if (requiresCompletionTokens) {
                     put("max_completion_tokens", maxTokens)
                 } else {
