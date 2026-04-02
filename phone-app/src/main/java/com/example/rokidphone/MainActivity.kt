@@ -411,6 +411,7 @@ fun PhoneMainScreen(
                         conversations = conversations,
                         onConversationClick = { conversationViewModel.selectConversation(it) },
                         onNewConversation = { conversationViewModel.createNewConversation() },
+                        onDeleteAllConversations = { conversationViewModel.deleteAllConversations() },
                         onDeleteConversation = { conversationViewModel.deleteConversation(it) },
                         onArchiveConversation = { conversationViewModel.archiveConversation(it) },
                         onPinConversation = { conversationViewModel.pinConversation(it) },

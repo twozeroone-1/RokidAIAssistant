@@ -368,7 +368,23 @@ class ConversationViewModel(application: Application) : AndroidViewModel(applica
             }
         }
     }
-    
+
+    /**
+     * Delete all saved conversations.
+     */
+    fun deleteAllConversations() {
+        viewModelScope.launch {
+            try {
+                conversationRepository.deleteAllConversations()
+                _currentConversationId.value = null
+                Log.d(TAG, "Deleted all conversations")
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to delete all conversations", e)
+                _uiState.update { it.copy(error = "Failed to delete all conversations: ${e.message}") }
+            }
+        }
+    }
+
     /**
      * Archive a conversation
      */

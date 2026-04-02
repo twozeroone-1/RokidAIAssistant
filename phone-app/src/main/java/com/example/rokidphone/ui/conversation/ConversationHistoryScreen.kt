@@ -31,6 +31,7 @@ fun ConversationHistoryScreen(
     conversations: List<Conversation>,
     onConversationClick: (Conversation) -> Unit,
     onNewConversation: () -> Unit,
+    onDeleteAllConversations: () -> Unit,
     onDeleteConversation: (Conversation) -> Unit,
     onArchiveConversation: (Conversation) -> Unit,
     onPinConversation: (Conversation) -> Unit,
@@ -38,6 +39,7 @@ fun ConversationHistoryScreen(
     modifier: Modifier = Modifier
 ) {
     var showDeleteDialog by remember { mutableStateOf<Conversation?>(null) }
+    var showDeleteAllDialog by remember { mutableStateOf(false) }
     var selectedConversation by remember { mutableStateOf<Conversation?>(null) }
     var showBottomSheet by remember { mutableStateOf(false) }
     
@@ -51,6 +53,16 @@ fun ConversationHistoryScreen(
                             Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = stringResource(R.string.back)
                         )
+                    }
+                },
+                actions = {
+                    if (conversations.isNotEmpty()) {
+                        IconButton(onClick = { showDeleteAllDialog = true }) {
+                            Icon(
+                                Icons.Default.DeleteSweep,
+                                contentDescription = stringResource(R.string.delete_all_conversations)
+                            )
+                        }
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -208,6 +220,33 @@ fun ConversationHistoryScreen(
             },
             dismissButton = {
                 TextButton(onClick = { showDeleteDialog = null }) {
+                    Text(stringResource(R.string.cancel))
+                }
+            }
+        )
+    }
+
+    if (showDeleteAllDialog) {
+        AlertDialog(
+            onDismissRequest = { showDeleteAllDialog = false },
+            title = { Text(stringResource(R.string.delete_all_conversations)) },
+            text = { Text(stringResource(R.string.delete_all_conversations_confirm)) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        onDeleteAllConversations()
+                        showDeleteAllDialog = false
+                        selectedConversation = null
+                    },
+                    colors = ButtonDefaults.textButtonColors(
+                        contentColor = MaterialTheme.colorScheme.error
+                    )
+                ) {
+                    Text(stringResource(R.string.delete))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteAllDialog = false }) {
                     Text(stringResource(R.string.cancel))
                 }
             }

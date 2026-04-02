@@ -183,7 +183,15 @@ class ConversationRepository(context: Context) {
         conversationDao.deleteConversationById(id)
         Log.d(TAG, "Deleted conversation: $id")
     }
-    
+
+    /**
+     * Delete all conversations and their messages.
+     */
+    suspend fun deleteAllConversations() = withContext(Dispatchers.IO) {
+        conversationDao.deleteAllConversations()
+        Log.d(TAG, "Deleted all conversations")
+    }
+
     /**
      * Delete all archived conversations
      */
