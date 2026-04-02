@@ -4,7 +4,7 @@
 
 ## Goal
 
-Allow the phone app to accept multiple Gemini API keys in Settings and automatically rotate/fail over between them at runtime so users can keep using Gemini when one key hits quota or becomes temporarily unavailable.
+Allow the phone app to accept multiple Gemini API keys in Settings, automatically rotate/fail over between them at runtime, and expose the latest approved Gemini models in the model picker so users can keep using Gemini when one key hits quota or becomes temporarily unavailable.
 
 ## Current State
 
@@ -12,6 +12,7 @@ Allow the phone app to accept multiple Gemini API keys in Settings and automatic
 - `SettingsRepository` persists a single encrypted string under `gemini_api_key`.
 - `GeminiService` accepts exactly one key and appends it directly to the request URL.
 - The Settings UI exposes Gemini input as a single text field.
+- The Gemini model catalog in `AvailableModels` is only partially current: it already includes `gemini-3-flash-preview`, but it does not include `gemini-3.1-flash-lite-preview`, and the Gemini Live entry is still outdated.
 
 This makes Gemini brittle: one exhausted or invalid key blocks the whole provider.
 
@@ -23,6 +24,7 @@ This makes Gemini brittle: one exhausted or invalid key blocks the whole provide
 - Invalid or forbidden keys should be temporarily excluded so they are not retried on every request.
 - The change must be limited to Gemini and Gemini Live related Gemini-key usage.
 - Secrets must stay inside existing app-side secure storage patterns.
+- The model picker must expose the latest approved Gemini text/vision and Live-capable model IDs we intend to support.
 
 ## Non-Goals
 
@@ -30,12 +32,15 @@ This makes Gemini brittle: one exhausted or invalid key blocks the whole provide
 - Importing keys from desktop files or external sync sources.
 - Building a complex analytics dashboard for key health.
 - Permanent server-side key validation or remote secret storage.
+- Automatically syncing model catalogs from Google at runtime.
 
 ## Recommended Approach
 
 Use a multiline Gemini key pool stored in the existing `geminiApiKey` string field, parsed into a normalized list at runtime, with a small in-memory `GeminiKeyPool` coordinator that selects keys, applies failover, and tracks cooldown state.
 
 This keeps persistence and migration simple while isolating failover behavior from UI and network code.
+
+Update the static Gemini catalog in `AvailableModels` at the same time so the Settings model picker reflects the latest approved Gemini entries.
 
 ## Data Model
 
@@ -146,11 +151,26 @@ Expected UX:
 
 No per-key list editing UI is required. Simple multiline paste is enough and matches the user’s workflow.
 
+## Model Catalog Updates
+
+As of 2026-04-02, the app-side Gemini model list should be refreshed to include the latest approved IDs we want users to pick in-app:
+
+- Keep: `gemini-3.1-pro-preview`
+- Keep: `gemini-3-flash-preview`
+- Add: `gemini-3.1-flash-lite-preview`
+
+For Gemini Live, replace the outdated entry with the current approved Live/native-audio model:
+
+- Replace outdated Live entry with: `gemini-2.5-flash-native-audio-preview-09-2025`
+
+Do not add an unverified `Gemini 3 Flash Live` model label or ID unless Google publishes a current documented model ID for it. The app should only ship model IDs we can trace to official documentation.
+
 ## Compatibility
 
 - Existing stored single Gemini keys continue to load and function.
 - `BuildConfig.GEMINI_API_KEY` fallback remains acceptable as a final development fallback, but if runtime key pool exists it should take precedence.
 - Gemini Live and any Gemini-backed STT path should read from the same normalized key pool source where practical.
+- Existing saved Gemini model selections should still load. If a saved Gemini model ID is no longer supported in the refreshed catalog, validation should fall back to a safe supported model instead of leaving the provider misconfigured.
 
 ## Testing Strategy
 
@@ -195,6 +215,7 @@ Expected primary files:
 - Modify: `phone-app/src/main/java/com/example/rokidphone/service/ai/AiServiceFactory.kt`
 - Create: `phone-app/src/main/java/com/example/rokidphone/service/ai/GeminiKeyPool.kt`
 - Create/Modify tests under `phone-app/src/test/java/com/example/rokidphone/`
+- Review Gemini model validation and catalog definitions in `phone-app/src/main/java/com/example/rokidphone/data/ApiSettings.kt`
 
 ## Risks
 

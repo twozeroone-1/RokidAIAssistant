@@ -2,17 +2,79 @@
 
 > **For agentic workers:** REQUIRED: Use superpowers:subagent-driven-development (if subagents available) or superpowers:executing-plans to implement this plan. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add multiline Gemini API key input to the phone app and use the parsed key pool for round-robin selection and automatic failover on quota and auth-related failures.
+**Goal:** Add multiline Gemini API key input to the phone app, use the parsed key pool for round-robin selection and automatic failover on quota and auth-related failures, and expose the latest approved Gemini models in the picker.
 
-**Architecture:** Persist Gemini keys in the existing encrypted settings string, parse them into a normalized list through `ApiSettings`, and route Gemini requests through a small in-memory `GeminiKeyPool` helper. Keep the implementation Gemini-specific and avoid broad provider abstractions in this iteration.
+**Architecture:** Persist Gemini keys in the existing encrypted settings string, parse them into a normalized list through `ApiSettings`, route Gemini requests through a small in-memory `GeminiKeyPool` helper, and refresh the static Gemini model catalog in `AvailableModels`. Keep the implementation Gemini-specific and avoid broad provider abstractions in this iteration.
 
 **Tech Stack:** Kotlin, Android SharedPreferences/EncryptedSharedPreferences, Jetpack Compose, OkHttp, Robolectric/JUnit, Gradle.
 
 ---
 
-## Chunk 1: Settings Model And Parsing
+## Chunk 1: Gemini Model Catalog Refresh
 
-### Task 1: Add Gemini key-pool parsing helpers to ApiSettings
+### Task 1: Update Gemini and Gemini Live model lists to current approved IDs
+
+**Files:**
+- Modify: `phone-app/src/main/java/com/example/rokidphone/data/ApiSettings.kt`
+- Test: `phone-app/src/test/java/com/example/rokidphone/data/AIModelTest.kt`
+
+- [ ] **Step 1: Write the failing model-catalog test**
+
+```kotlin
+@Test
+fun `Gemini catalog includes latest approved lite and live ids`() {
+    val geminiIds = AvailableModels.geminiModels.map { it.id }
+    val liveIds = AvailableModels.geminiLiveModels.map { it.id }
+
+    assertThat(geminiIds).contains("gemini-3.1-flash-lite-preview")
+    assertThat(geminiIds).contains("gemini-3-flash-preview")
+    assertThat(liveIds).contains("gemini-2.5-flash-native-audio-preview-09-2025")
+}
+```
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run: `.\gradlew.bat :phone-app:testDebugUnitTest --tests "com.example.rokidphone.data.AIModelTest"`
+Expected: FAIL because the new Lite and Live IDs are not fully represented yet.
+
+- [ ] **Step 3: Update the static Gemini model lists minimally**
+
+```kotlin
+ModelOption(
+    id = "gemini-3.1-flash-lite-preview",
+    displayName = "Gemini 3.1 Flash-Lite (Preview)",
+    provider = AiProvider.GEMINI,
+    supportsAudio = true,
+    supportsVision = true,
+    isPreview = true,
+)
+```
+
+Also replace the outdated Gemini Live entry with:
+
+```kotlin
+id = "gemini-2.5-flash-native-audio-preview-09-2025"
+```
+
+- [ ] **Step 4: Verify fallback/validation still works for Gemini**
+
+Check any model validation paths that assume the old Live model ID and update them only if required.
+
+- [ ] **Step 5: Run tests to verify they pass**
+
+Run: `.\gradlew.bat :phone-app:testDebugUnitTest --tests "com.example.rokidphone.data.AIModelTest"`
+Expected: PASS
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add phone-app/src/main/java/com/example/rokidphone/data/ApiSettings.kt phone-app/src/test/java/com/example/rokidphone/data/AIModelTest.kt
+git commit -m "feat: refresh Gemini model catalog entries"
+```
+
+## Chunk 2: Settings Model And Parsing
+
+### Task 2: Add Gemini key-pool parsing helpers to ApiSettings
 
 **Files:**
 - Modify: `phone-app/src/main/java/com/example/rokidphone/data/ApiSettings.kt`
@@ -73,7 +135,7 @@ git add phone-app/src/main/java/com/example/rokidphone/data/ApiSettings.kt phone
 git commit -m "feat: add Gemini key pool parsing helpers"
 ```
 
-### Task 2: Keep settings persistence compatible with multiline Gemini input
+### Task 3: Keep settings persistence compatible with multiline Gemini input
 
 **Files:**
 - Modify: `phone-app/src/main/java/com/example/rokidphone/data/SettingsRepository.kt`
@@ -128,9 +190,9 @@ git add phone-app/src/main/java/com/example/rokidphone/data/SettingsRepository.k
 git commit -m "feat: normalize persisted Gemini key pools"
 ```
 
-## Chunk 2: Key Pool Runtime
+## Chunk 3: Key Pool Runtime
 
-### Task 3: Create GeminiKeyPool with round-robin and cooldown support
+### Task 4: Create GeminiKeyPool with round-robin and cooldown support
 
 **Files:**
 - Create: `phone-app/src/main/java/com/example/rokidphone/service/ai/GeminiKeyPool.kt`
@@ -204,7 +266,7 @@ git add phone-app/src/main/java/com/example/rokidphone/service/ai/GeminiKeyPool.
 git commit -m "feat: add Gemini key pool failover manager"
 ```
 
-### Task 4: Add Gemini error classification helpers
+### Task 5: Add Gemini error classification helpers
 
 **Files:**
 - Modify: `phone-app/src/main/java/com/example/rokidphone/service/ai/GeminiKeyPool.kt`
@@ -246,9 +308,9 @@ git add phone-app/src/main/java/com/example/rokidphone/service/ai/GeminiKeyPool.
 git commit -m "feat: classify Gemini key failover conditions"
 ```
 
-## Chunk 3: Gemini Service Integration
+## Chunk 4: Gemini Service Integration
 
-### Task 5: Inject parsed Gemini keys into Gemini service construction
+### Task 6: Inject parsed Gemini keys into Gemini service construction
 
 **Files:**
 - Modify: `phone-app/src/main/java/com/example/rokidphone/service/ai/AiServiceFactory.kt`
@@ -296,7 +358,7 @@ git add phone-app/src/main/java/com/example/rokidphone/service/ai/AiServiceFacto
 git commit -m "feat: wire Gemini key pools into service creation"
 ```
 
-### Task 6: Apply failover inside Gemini chat and image requests
+### Task 7: Apply failover inside Gemini chat and image requests
 
 **Files:**
 - Modify: `phone-app/src/main/java/com/example/rokidphone/service/ai/GeminiService.kt`
@@ -347,9 +409,9 @@ git add phone-app/src/main/java/com/example/rokidphone/service/ai/GeminiService.
 git commit -m "feat: add Gemini key failover to runtime requests"
 ```
 
-## Chunk 4: Settings UI
+## Chunk 5: Settings UI
 
-### Task 7: Convert Gemini key field to multiline pool input
+### Task 8: Convert Gemini key field to multiline pool input
 
 **Files:**
 - Modify: `phone-app/src/main/java/com/example/rokidphone/ui/SettingsScreen.kt`
@@ -384,9 +446,9 @@ git add phone-app/src/main/java/com/example/rokidphone/ui/SettingsScreen.kt phon
 git commit -m "feat: add multiline Gemini key pool settings UI"
 ```
 
-## Chunk 5: Regression Verification
+## Chunk 6: Regression Verification
 
-### Task 8: Verify merged behavior and guard existing flows
+### Task 9: Verify merged behavior and guard existing flows
 
 **Files:**
 - Modify as needed: test files only if regressions are exposed
