@@ -155,10 +155,9 @@ class PhoneAIService : Service() {
     
     private fun initializeServices() {
         Log.d(TAG, "Initializing services...")
+        val settingsRepository = SettingsRepository.getInstance(this)
         
         try {
-            // Get settings
-            val settingsRepository = SettingsRepository.getInstance(this)
             val settings = settingsRepository.getSettings()
             
             // Initialize conversation repository for persisting voice conversations
@@ -197,6 +196,7 @@ class PhoneAIService : Service() {
                     
                     // Handle Live mode transitions
                     handleLiveModeTransition(validatedNewSettings)
+                    syncSleepModeSetting(validatedNewSettings)
                     
                     Log.d(TAG, "Services updated: ${validatedNewSettings.aiProvider}, STT: ${validatedNewSettings.sttProvider}")
                 }
@@ -238,6 +238,7 @@ class PhoneAIService : Service() {
                                 Log.d(TAG, "Initializing CXR Bluetooth with device: ${device.name}")
                                 cxrManager?.initBluetooth(device)
                             }
+                            syncSleepModeSetting(settingsRepository.getSettings())
                         }
                     }
                 } catch (e: Exception) {
@@ -402,6 +403,15 @@ class PhoneAIService : Service() {
         
         Log.d(TAG, "Sending CAPTURE_PHOTO command to glasses")
         bluetoothManager?.sendMessage(Message(type = MessageType.CAPTURE_PHOTO))
+    }
+
+    private suspend fun syncSleepModeSetting(settings: ApiSettings) {
+        bluetoothManager?.sendMessage(
+            Message(
+                type = MessageType.SLEEP_MODE_CONFIG,
+                payload = settings.glassesSleepModeEnabled.toString()
+            )
+        )
     }
     
     /**

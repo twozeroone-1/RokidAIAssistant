@@ -37,6 +37,10 @@ data class GlassesUiState(
     val isConnected: Boolean = false,
     val isListening: Boolean = false,
     val isProcessing: Boolean = false,
+    val isSendingInput: Boolean = false,
+    val isAwaitingAnalysis: Boolean = false,
+    val hasVisibleOutput: Boolean = false,
+    val sleepModeEnabled: Boolean = false,
     val displayText: String = "",
     val hintText: String = "",
     val connectionState: ConnectionState = ConnectionState.DISCONNECTED,
@@ -198,6 +202,9 @@ class GlassesViewModel(
                     bluetoothState = state,
                     connectionState = connectionState,
                     isConnected = state == BluetoothClientState.CONNECTED,
+                    isSendingInput = false,
+                    isAwaitingAnalysis = false,
+                    hasVisibleOutput = false,
                     displayText = when (state) {
                         BluetoothClientState.DISCONNECTED -> context.getString(R.string.not_connected)
                         BluetoothClientState.CONNECTING -> context.getString(R.string.connecting_status)
@@ -258,6 +265,7 @@ class GlassesViewModel(
         // Check if connected
         if (_uiState.value.bluetoothState != BluetoothClientState.CONNECTED) {
             _uiState.update { it.copy(
+                hasVisibleOutput = true,
                 displayText = context.getString(R.string.please_connect_phone),
                 hintText = context.getString(R.string.select_paired_device)
             ) }
@@ -272,6 +280,9 @@ class GlassesViewModel(
         
         _uiState.update { it.copy(
             isListening = true,
+            isSendingInput = false,
+            isAwaitingAnalysis = false,
+            hasVisibleOutput = false,
             displayText = context.getString(R.string.listening),
             hintText = context.getString(R.string.tap_stop_recording),
             userTranscript = "",
@@ -289,7 +300,10 @@ class GlassesViewModel(
             Log.e(TAG, "RECORD_AUDIO permission not granted")
             _uiState.update { it.copy(
                 displayText = context.getString(R.string.mic_permission_required),
-                isListening = false
+                isListening = false,
+                isSendingInput = false,
+                isAwaitingAnalysis = false,
+                hasVisibleOutput = true
             ) }
             return
         }
@@ -318,7 +332,10 @@ class GlassesViewModel(
                     withContext(Dispatchers.Main) {
                         _uiState.update { it.copy(
                             displayText = context.getString(R.string.mic_permission_required),
-                            isListening = false
+                            isListening = false,
+                            isSendingInput = false,
+                            isAwaitingAnalysis = false,
+                            hasVisibleOutput = true
                         ) }
                     }
                     return@launch
@@ -338,7 +355,10 @@ class GlassesViewModel(
                     withContext(Dispatchers.Main) {
                         _uiState.update { it.copy(
                             displayText = "Failed to initialize microphone",
-                            isListening = false
+                            isListening = false,
+                            isSendingInput = false,
+                            isAwaitingAnalysis = false,
+                            hasVisibleOutput = true
                         ) }
                     }
                     audioRecord?.release()
@@ -368,7 +388,10 @@ class GlassesViewModel(
                 withContext(Dispatchers.Main) {
                     _uiState.update { it.copy(
                         displayText = context.getString(R.string.mic_permission_required),
-                        isListening = false
+                        isListening = false,
+                        isSendingInput = false,
+                        isAwaitingAnalysis = false,
+                        hasVisibleOutput = true
                     ) }
                 }
             } finally {
@@ -394,6 +417,9 @@ class GlassesViewModel(
         _uiState.update { it.copy(
             isListening = false,
             isProcessing = true,
+            isSendingInput = true,
+            isAwaitingAnalysis = false,
+            hasVisibleOutput = false,
             displayText = context.getString(R.string.sending_audio),
             hintText = context.getString(R.string.please_wait)
         ) }
@@ -418,6 +444,9 @@ class GlassesViewModel(
                     withContext(Dispatchers.Main) {
                         _uiState.update { it.copy(
                             isProcessing = false,
+                            isSendingInput = false,
+                            isAwaitingAnalysis = false,
+                            hasVisibleOutput = true,
                             displayText = context.getString(R.string.no_voice_detected),
                             hintText = context.getString(R.string.please_try_again)
                         ) }
@@ -427,7 +456,12 @@ class GlassesViewModel(
                 
                 // Send audio data to phone
                 withContext(Dispatchers.Main) {
-                    _uiState.update { it.copy(displayText = context.getString(R.string.sending)) }
+                    _uiState.update { it.copy(
+                        isSendingInput = true,
+                        isAwaitingAnalysis = false,
+                        hasVisibleOutput = false,
+                        displayText = context.getString(R.string.sending)
+                    ) }
                 }
                 
                 val success = bluetoothClient.sendVoiceEnd(audioData)
@@ -436,6 +470,9 @@ class GlassesViewModel(
                     withContext(Dispatchers.Main) {
                         _uiState.update { it.copy(
                             isProcessing = false,
+                            isSendingInput = false,
+                            isAwaitingAnalysis = false,
+                            hasVisibleOutput = true,
                             displayText = context.getString(R.string.send_failed),
                             hintText = context.getString(R.string.reconnect_try_again)
                         ) }
@@ -448,6 +485,9 @@ class GlassesViewModel(
                 // Update UI state, waiting for phone response
                 withContext(Dispatchers.Main) {
                     _uiState.update { it.copy(
+                        isSendingInput = false,
+                        isAwaitingAnalysis = true,
+                        hasVisibleOutput = false,
                         displayText = context.getString(R.string.waiting_phone),
                         hintText = context.getString(R.string.ai_thinking)
                     ) }
@@ -460,6 +500,9 @@ class GlassesViewModel(
                 withContext(Dispatchers.Main) {
                     _uiState.update { it.copy(
                         isProcessing = false,
+                        isSendingInput = false,
+                        isAwaitingAnalysis = false,
+                        hasVisibleOutput = true,
                         displayText = context.getString(R.string.error_prefix, e.message ?: ""),
                         hintText = context.getString(R.string.please_try_again)
                     ) }
@@ -486,6 +529,9 @@ class GlassesViewModel(
             MessageType.AI_PROCESSING -> {
                 _uiState.update { it.copy(
                     isProcessing = true,
+                    isSendingInput = false,
+                    isAwaitingAnalysis = true,
+                    hasVisibleOutput = false,
                     displayText = message.payload ?: context.getString(R.string.processing)
                 ) }
             }
@@ -494,6 +540,9 @@ class GlassesViewModel(
                 // User's speech recognized by phone
                 _uiState.update { it.copy(
                     userTranscript = message.payload ?: "",
+                    isSendingInput = false,
+                    isAwaitingAnalysis = true,
+                    hasVisibleOutput = false,
                     displayText = context.getString(R.string.you_said, message.payload ?: "")
                 ) }
             }
@@ -512,6 +561,9 @@ class GlassesViewModel(
             MessageType.AI_ERROR -> {
                 _uiState.update { it.copy(
                     isProcessing = false,
+                    isSendingInput = false,
+                    isAwaitingAnalysis = false,
+                    hasVisibleOutput = true,
                     displayText = context.getString(R.string.error_prefix, message.payload ?: ""),
                     hintText = context.getString(R.string.please_try_again)
                 ) }
@@ -519,15 +571,27 @@ class GlassesViewModel(
             
             MessageType.DISPLAY_TEXT -> {
                 _uiState.update { it.copy(
+                    hasVisibleOutput = true,
                     displayText = message.payload ?: ""
                 ) }
             }
             
             MessageType.DISPLAY_CLEAR -> {
                 _uiState.update { it.copy(
+                    isSendingInput = false,
+                    isAwaitingAnalysis = false,
+                    hasVisibleOutput = false,
                     displayText = "",
                     hintText = context.getString(R.string.tap_touchpad_start)
                 ) }
+            }
+
+            MessageType.SLEEP_MODE_CONFIG -> {
+                _uiState.update {
+                    it.copy(
+                        sleepModeEnabled = message.payload?.equals("true", ignoreCase = true) == true
+                    )
+                }
             }
             
             MessageType.HEARTBEAT -> {
@@ -554,7 +618,8 @@ class GlassesViewModel(
                     isLiveModeActive = true,
                     displayText = "🎙️ Live mode activated",
                     hintText = "Real-time voice conversation...",
-                    liveTranscription = ""
+                    liveTranscription = "",
+                    hasVisibleOutput = true
                 ) }
                 // Start real-time video streaming to phone
                 startVideoStreaming()
@@ -569,7 +634,8 @@ class GlassesViewModel(
                     isLiveModeActive = false,
                     displayText = "Live mode ended",
                     hintText = context.getString(R.string.tap_touchpad_start),
-                    liveTranscription = ""
+                    liveTranscription = "",
+                    hasVisibleOutput = true
                 ) }
             }
             
@@ -579,6 +645,7 @@ class GlassesViewModel(
                 Log.d(TAG, "Live transcription: $text")
                 _uiState.update { it.copy(
                     liveTranscription = text,
+                    hasVisibleOutput = true,
                     displayText = text
                 ) }
             }
@@ -592,7 +659,10 @@ class GlassesViewModel(
                 _uiState.update { it.copy(
                     isCapturingPhoto = false,
                     photoTransferProgress = 0f,
-                    isProcessing = false
+                    isProcessing = false,
+                    isSendingInput = false,
+                    isAwaitingAnalysis = false,
+                    hasVisibleOutput = true
                 ) }
                 
                 // Display the analysis result (with pagination)
@@ -610,7 +680,8 @@ class GlassesViewModel(
                     hintText = hintText,
                     currentPage = 0,
                     totalPages = responsePages.size,
-                    isPaginated = isPaginated
+                    isPaginated = isPaginated,
+                    hasVisibleOutput = true
                 ) }
             }
             
@@ -661,6 +732,9 @@ class GlassesViewModel(
         
         _uiState.update { it.copy(
             isProcessing = false,
+            isSendingInput = false,
+            isAwaitingAnalysis = false,
+            hasVisibleOutput = true,
             aiResponse = responseText,
             displayText = displayText,
             hintText = hintText,
@@ -785,9 +859,32 @@ class GlassesViewModel(
     fun dismissPagination() {
         resetPagination()
         _uiState.update { it.copy(
+            isProcessing = false,
+            isSendingInput = false,
+            isAwaitingAnalysis = false,
+            hasVisibleOutput = false,
             displayText = context.getString(R.string.tap_touchpad_start),
             hintText = context.getString(R.string.tap_touchpad_record)
         ) }
+    }
+
+    fun dismissOutput() {
+        dismissPagination()
+    }
+
+    fun handlePrimaryAction() {
+        val state = _uiState.value
+        when {
+            state.isPaginated && state.currentPage < state.totalPages - 1 -> nextPage()
+            state.isPaginated -> {
+                dismissOutput()
+                if (!state.sleepModeEnabled) {
+                    toggleRecording()
+                }
+            }
+            state.sleepModeEnabled && state.hasVisibleOutput -> dismissOutput()
+            else -> toggleRecording()
+        }
     }
     
     /**
@@ -904,6 +1001,7 @@ class GlassesViewModel(
         if (_uiState.value.bluetoothState != BluetoothClientState.CONNECTED) {
             Log.w(TAG, "Not connected to phone")
             _uiState.update { it.copy(
+                hasVisibleOutput = true,
                 displayText = context.getString(R.string.bluetooth_not_connected),
                 hintText = context.getString(R.string.connect_phone_first)
             ) }
@@ -915,6 +1013,9 @@ class GlassesViewModel(
                 _uiState.update { it.copy(
                     isCapturingPhoto = true,
                     isProcessing = true,
+                    isSendingInput = false,
+                    isAwaitingAnalysis = false,
+                    hasVisibleOutput = false,
                     displayText = context.getString(R.string.capturing_photo),
                     hintText = context.getString(R.string.please_wait_short)
                 ) }
@@ -930,6 +1031,9 @@ class GlassesViewModel(
                     _uiState.update { it.copy(
                         isCapturingPhoto = false,
                         isProcessing = false,
+                        isSendingInput = false,
+                        isAwaitingAnalysis = false,
+                        hasVisibleOutput = true,
                         displayText = context.getString(R.string.capture_failed),
                         hintText = context.getString(R.string.capture_failed_hint)
                     ) }
@@ -939,7 +1043,13 @@ class GlassesViewModel(
                 Log.d(TAG, "Photo captured: ${rawImageData.size} bytes using $cameraType")
                 
                 // Step 2: Compress photo
-                _uiState.update { it.copy(displayText = context.getString(R.string.compressing_photo)) }
+                _uiState.update { it.copy(
+                    isCapturingPhoto = false,
+                    isSendingInput = true,
+                    isAwaitingAnalysis = false,
+                    hasVisibleOutput = false,
+                    displayText = context.getString(R.string.compressing_photo)
+                ) }
                 val compressedData = withContext(Dispatchers.Default) {
                     ImageCompressor.compressForTransfer(rawImageData)
                 }
@@ -947,6 +1057,10 @@ class GlassesViewModel(
                 
                 // Step 3: Send to phone
                 _uiState.update { it.copy(
+                    isCapturingPhoto = false,
+                    isSendingInput = true,
+                    isAwaitingAnalysis = false,
+                    hasVisibleOutput = false,
                     displayText = context.getString(R.string.transferring_photo),
                     photoTransferProgress = 0f
                 ) }
@@ -968,6 +1082,9 @@ class GlassesViewModel(
                         Log.d(TAG, "Photo transfer complete: $stats")
                         _uiState.update { it.copy(
                             isCapturingPhoto = false,
+                            isSendingInput = false,
+                            isAwaitingAnalysis = true,
+                            hasVisibleOutput = false,
                             displayText = context.getString(R.string.photo_sent_waiting_ai),
                             hintText = context.getString(R.string.please_wait_short)
                         ) }
@@ -978,6 +1095,9 @@ class GlassesViewModel(
                         _uiState.update { it.copy(
                             isCapturingPhoto = false,
                             isProcessing = false,
+                            isSendingInput = false,
+                            isAwaitingAnalysis = false,
+                            hasVisibleOutput = true,
                             displayText = context.getString(R.string.transfer_failed, error.message ?: ""),
                             hintText = context.getString(R.string.please_retry)
                         ) }
@@ -989,6 +1109,9 @@ class GlassesViewModel(
                 _uiState.update { it.copy(
                     isCapturingPhoto = false,
                     isProcessing = false,
+                    isSendingInput = false,
+                    isAwaitingAnalysis = false,
+                    hasVisibleOutput = true,
                     displayText = context.getString(R.string.error_message, e.message ?: ""),
                     hintText = context.getString(R.string.please_retry)
                 ) }

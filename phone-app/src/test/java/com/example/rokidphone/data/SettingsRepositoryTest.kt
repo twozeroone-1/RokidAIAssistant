@@ -38,4 +38,16 @@ class SettingsRepositoryTest {
 
         assertThat(reloadedRepository.getSettings().autoReadResponsesAloud).isFalse()
     }
+
+    @Test
+    fun `saveSettings persists glasses sleep mode toggle`() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val repository = SettingsRepository(context)
+
+        repository.saveSettings(ApiSettings(glassesSleepModeEnabled = true))
+
+        val reloadedRepository = SettingsRepository(context)
+
+        assertThat(reloadedRepository.getSettings().glassesSleepModeEnabled).isTrue()
+    }
 }

@@ -33,8 +33,12 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.rokidglasses.service.WakeWordService
 import com.example.rokidglasses.service.photo.CameraService
+import com.example.rokidglasses.ui.SleepModeIndicator
 import com.example.rokidglasses.ui.theme.RokidGlassesTheme
+import com.example.rokidglasses.viewmodel.GlassesDisplayStage
 import com.example.rokidglasses.viewmodel.GlassesViewModel
+import com.example.rokidglasses.viewmodel.deriveDisplayStage
+import com.example.rokidglasses.viewmodel.toSleepModeSnapshot
 
 class MainActivity : ComponentActivity() {
     
@@ -178,13 +182,7 @@ class MainActivity : ComponentActivity() {
             KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER -> {
                 // Only handle short tap (not long press which was already handled)
                 if (event?.eventTime?.minus(event.downTime) ?: 0 < 500) {
-                    // Short tap - toggle recording
-                    if (uiState.isPaginated && uiState.currentPage == uiState.totalPages - 1) {
-                        viewModel.dismissPagination()
-                        viewModel.toggleRecording()
-                    } else if (!uiState.isPaginated) {
-                        viewModel.toggleRecording()
-                    }
+                    viewModel.handlePrimaryAction()
                 }
                 true
             }
@@ -271,6 +269,8 @@ fun GlassesMainScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     var showDeviceSelector by remember { mutableStateOf(false) }
+    val sleepModeStage = remember(uiState) { deriveDisplayStage(uiState.toSleepModeSnapshot()) }
+    val shouldUseSleepMode = uiState.sleepModeEnabled && !uiState.isLiveModeActive
     
     // Track swipe gesture for pagination
     var swipeOffset by remember { mutableFloatStateOf(0f) }
@@ -302,16 +302,9 @@ fun GlassesMainScreen(
                 interactionSource = remember { MutableInteractionSource() }
             ) {
                 if (uiState.isPaginated) {
-                    // If paginated, tap goes to next page or exits pagination on last page
-                    if (uiState.currentPage < uiState.totalPages - 1) {
-                        viewModel.nextPage()
-                    } else {
-                        // On last page, tap to dismiss and allow new recording
-                        viewModel.dismissPagination()
-                    }
+                    viewModel.handlePrimaryAction()
                 } else if (uiState.isConnected) {
-                    // When connected, tap screen to toggle recording
-                    viewModel.toggleRecording()
+                    viewModel.handlePrimaryAction()
                 } else {
                     // When disconnected, show device selector
                     viewModel.refreshPairedDevices()
@@ -320,17 +313,26 @@ fun GlassesMainScreen(
             }
     ) {
         // Status indicator (top right)
-        StatusIndicator(
-            isConnected = uiState.isConnected,
-            isListening = uiState.isListening,
-            deviceName = uiState.connectedDeviceName,
-            modifier = Modifier
-                .align(Alignment.TopEnd)
-                .padding(16.dp)
-        )
+        if (shouldUseSleepMode) {
+            SleepModeIndicator(
+                stage = sleepModeStage,
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(16.dp)
+            )
+        } else {
+            StatusIndicator(
+                isConnected = uiState.isConnected,
+                isListening = uiState.isListening,
+                deviceName = uiState.connectedDeviceName,
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(16.dp)
+            )
+        }
         
         // Page indicator (top left) - only show when paginated
-        if (uiState.isPaginated) {
+        if (uiState.isPaginated && (!shouldUseSleepMode || sleepModeStage == GlassesDisplayStage.OUTPUT)) {
             PageIndicator(
                 currentPage = uiState.currentPage + 1,
                 totalPages = uiState.totalPages,
@@ -341,22 +343,26 @@ fun GlassesMainScreen(
         }
         
         // Main display area (centered)
-        MainDisplayArea(
-            displayText = uiState.displayText,
-            isProcessing = uiState.isProcessing,
-            isPaginated = uiState.isPaginated,
-            currentPage = uiState.currentPage,
-            totalPages = uiState.totalPages,
-            modifier = Modifier.align(Alignment.Center)
-        )
+        if (!shouldUseSleepMode || sleepModeStage == GlassesDisplayStage.OUTPUT) {
+            MainDisplayArea(
+                displayText = uiState.displayText,
+                isProcessing = uiState.isProcessing && !shouldUseSleepMode,
+                isPaginated = uiState.isPaginated,
+                currentPage = uiState.currentPage,
+                totalPages = uiState.totalPages,
+                modifier = Modifier.align(Alignment.Center)
+            )
+        }
         
         // Hint text (bottom)
-        HintText(
-            hint = uiState.hintText,
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .padding(bottom = 24.dp)
-        )
+        if (!shouldUseSleepMode || sleepModeStage == GlassesDisplayStage.OUTPUT) {
+            HintText(
+                hint = uiState.hintText,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 24.dp)
+            )
+        }
         
         // Device selector dialog
         if (showDeviceSelector) {

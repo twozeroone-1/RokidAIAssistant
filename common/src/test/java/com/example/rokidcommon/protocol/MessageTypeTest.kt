@@ -48,6 +48,7 @@ class MessageTypeTest {
         assertThat(MessageType.DISPLAY_TEXT.code).isEqualTo(0x30)
         assertThat(MessageType.DISPLAY_CLEAR.code).isEqualTo(0x31)
         assertThat(MessageType.DISPLAY_STATUS.code).isEqualTo(0x32)
+        assertThat(MessageType.SLEEP_MODE_CONFIG.code).isEqualTo(0x33)
     }
 
     @Test
@@ -99,8 +100,8 @@ class MessageTypeTest {
     @Test
     fun `total enum count matches expected`() {
         // Test: total number of MessageType entries
-        // Connection(5) + Voice(6) + AI(5) + Display(3) + Photo(8) + Live(4) + System(3) = 34
-        assertThat(MessageType.entries.size).isEqualTo(34)
+        // Connection(5) + Voice(6) + AI(5) + Display(4) + Photo(8) + Live(4) + System(3) = 35
+        assertThat(MessageType.entries.size).isEqualTo(35)
     }
 
     // ==================== fromCode() ====================

@@ -64,6 +64,7 @@ class SettingsRepository(private val context: Context) {
         private const val KEY_AUTO_ANALYZE_RECORDINGS = "auto_analyze_recordings"
         private const val KEY_PUSH_CHAT_TO_GLASSES = "push_chat_to_glasses"
         private const val KEY_PUSH_RECORDING_TO_GLASSES = "push_recording_to_glasses"
+        private const val KEY_GLASSES_SLEEP_MODE_ENABLED = "glasses_sleep_mode_enabled"
         
         // Keys for TTS settings
         private const val KEY_AUTO_READ_RESPONSES_ALOUD = "auto_read_responses_aloud"
@@ -206,6 +207,7 @@ class SettingsRepository(private val context: Context) {
             autoAnalyzeRecordings = prefs.getBoolean(KEY_AUTO_ANALYZE_RECORDINGS, true),
             pushChatToGlasses = prefs.getBoolean(KEY_PUSH_CHAT_TO_GLASSES, true),
             pushRecordingToGlasses = prefs.getBoolean(KEY_PUSH_RECORDING_TO_GLASSES, true),
+            glassesSleepModeEnabled = prefs.getBoolean(KEY_GLASSES_SLEEP_MODE_ENABLED, false),
             temperature = prefs.getFloat(KEY_TEMPERATURE, 0.7f),
             maxTokens = prefs.getInt(KEY_MAX_TOKENS, 2048),
             topP = prefs.getFloat(KEY_TOP_P, 1.0f),
@@ -299,6 +301,7 @@ class SettingsRepository(private val context: Context) {
             putBoolean(KEY_AUTO_ANALYZE_RECORDINGS, normalizedSettings.autoAnalyzeRecordings)
             putBoolean(KEY_PUSH_CHAT_TO_GLASSES, normalizedSettings.pushChatToGlasses)
             putBoolean(KEY_PUSH_RECORDING_TO_GLASSES, normalizedSettings.pushRecordingToGlasses)
+            putBoolean(KEY_GLASSES_SLEEP_MODE_ENABLED, normalizedSettings.glassesSleepModeEnabled)
             putFloat(KEY_TEMPERATURE, normalizedSettings.temperature)
             putInt(KEY_MAX_TOKENS, normalizedSettings.maxTokens)
             putFloat(KEY_TOP_P, normalizedSettings.topP)
