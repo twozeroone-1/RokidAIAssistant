@@ -30,3 +30,21 @@ fun GlassesUiState.resolveLiveMinimalDisplayText(): String {
         else -> ""
     }
 }
+
+fun GlassesUiState.shouldUseLiveMinimalResponseFontScale(): Boolean {
+    if (!shouldUseLiveMinimalUi()) {
+        return displayUsesResponseFontScale
+    }
+
+    val effectiveRagMode = resolveEffectiveLiveRagDisplayMode(
+        liveRagEnabled = liveRagEnabled,
+        configuredMode = liveRagDisplayMode,
+    )
+
+    return when {
+        effectiveRagMode == LiveRagDisplayMode.RAG_RESULT_ONLY && liveRagText.isNotBlank() -> true
+        liveAssistantText.isNotBlank() -> true
+        aiResponse.isNotBlank() -> true
+        else -> false
+    }
+}

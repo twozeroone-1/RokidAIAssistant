@@ -66,4 +66,28 @@ class GlassesLiveMinimalUiTest {
             ).resolveLiveMinimalDisplayText()
         ).isEqualTo("RAG 결과")
     }
+
+    @Test
+    fun `live minimal ui keeps response font scale when showing cached ai output`() {
+        assertThat(
+            GlassesUiState(
+                liveModeEnabled = true,
+                liveMinimalUiEnabled = true,
+                displayUsesResponseFontScale = false,
+                aiResponse = "이전 응답",
+            ).shouldUseLiveMinimalResponseFontScale()
+        ).isTrue()
+    }
+
+    @Test
+    fun `live minimal ui does not force response font scale without ai output`() {
+        assertThat(
+            GlassesUiState(
+                liveModeEnabled = true,
+                liveMinimalUiEnabled = true,
+                displayUsesResponseFontScale = false,
+                displayText = "연결됨",
+            ).shouldUseLiveMinimalResponseFontScale()
+        ).isFalse()
+    }
 }

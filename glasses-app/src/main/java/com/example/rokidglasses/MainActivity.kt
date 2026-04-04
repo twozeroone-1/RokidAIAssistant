@@ -51,6 +51,7 @@ import com.example.rokidglasses.viewmodel.resolveDisplayTextRenderState
 import com.example.rokidglasses.viewmodel.resolveLiveRagAutoScrollDurationMillis
 import com.example.rokidglasses.viewmodel.resolveLiveRagManualScrollTarget
 import com.example.rokidglasses.viewmodel.resolveLiveMinimalDisplayText
+import com.example.rokidglasses.viewmodel.shouldUseLiveMinimalResponseFontScale
 import com.example.rokidglasses.viewmodel.responseFontScaleMultiplier
 import com.example.rokidglasses.viewmodel.shouldUseLiveMinimalUi
 import com.example.rokidglasses.viewmodel.toSleepModeSnapshot
@@ -301,6 +302,13 @@ fun GlassesMainScreen(
             uiState.displayText
         }
     }
+    val useResponseFontScale = remember(uiState, shouldUseLiveMinimalUi) {
+        if (shouldUseLiveMinimalUi) {
+            uiState.shouldUseLiveMinimalResponseFontScale()
+        } else {
+            uiState.displayUsesResponseFontScale
+        }
+    }
     
     // Track swipe gesture for pagination
     var swipeOffset by remember { mutableFloatStateOf(0f) }
@@ -392,7 +400,7 @@ fun GlassesMainScreen(
                 livePanelContent = livePanelContent,
                 isProcessing = uiState.isProcessing && !shouldUseSleepMode && !shouldUseLiveMinimalUi,
                 responseFontScalePercent = uiState.responseFontScalePercent,
-                useResponseFontScale = uiState.displayUsesResponseFontScale,
+                useResponseFontScale = useResponseFontScale,
                 liveRagAutoScrollSpeedLevel = uiState.liveRagAutoScrollSpeedLevel,
                 liveRagManualScrollCommands = viewModel.liveRagManualScrollCommands,
                 showSplitPanelTitles = !shouldUseLiveMinimalUi,
