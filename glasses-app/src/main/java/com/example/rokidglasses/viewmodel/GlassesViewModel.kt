@@ -19,6 +19,7 @@ import com.example.rokidcommon.Constants
 import com.example.rokidcommon.protocol.ConnectionState
 import com.example.rokidcommon.protocol.LiveControlInputSource
 import com.example.rokidcommon.protocol.LiveRagDisplayMode
+import com.example.rokidcommon.protocol.LiveRagSplitScrollMode
 import com.example.rokidcommon.protocol.LiveSessionControlPayload
 import com.example.rokidcommon.protocol.Message
 import com.example.rokidcommon.protocol.MessageType
@@ -36,8 +37,10 @@ import com.example.rokidglasses.service.photo.ImageCompressor
 import com.example.rokidglasses.service.photo.PhotoTransferProtocol
 import com.example.rokidglasses.service.photo.createPhotoTransferProtocol
 import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import org.json.JSONObject
@@ -78,8 +81,11 @@ data class GlassesUiState(
     val liveTranscription: String = "",
     val liveRagEnabled: Boolean = false,
     val liveRagDisplayMode: LiveRagDisplayMode = LiveRagDisplayMode.RAG_RESULT_ONLY,
+    val liveRagSplitScrollMode: LiveRagSplitScrollMode = LiveRagSplitScrollMode.AUTO,
+    val liveRagAutoScrollSpeedLevel: Int = 2,
     val liveAssistantText: String = "",
-    val liveRagText: String = ""
+    val liveRagText: String = "",
+    val liveRagIsFinal: Boolean = false,
 )
 
 private fun shouldKeepLiveDisplayText(
@@ -141,6 +147,9 @@ class GlassesViewModel(
         hintText = context.getString(R.string.tap_touchpad_record)
     ))
     val uiState: StateFlow<GlassesUiState> = _uiState.asStateFlow()
+    private val _liveRagManualScrollCommands =
+        MutableSharedFlow<LiveRagManualScrollCommand>(extraBufferCapacity = 1)
+    val liveRagManualScrollCommands = _liveRagManualScrollCommands.asSharedFlow()
     
     // Store full AI response for pagination
     private var fullAiResponse: String = ""
@@ -271,6 +280,7 @@ class GlassesViewModel(
                         liveTranscription = if (clearLiveOutput) "" else current.liveTranscription,
                         liveAssistantText = if (clearLiveOutput) "" else current.liveAssistantText,
                         liveRagText = if (clearLiveOutput) "" else current.liveRagText,
+                        liveRagIsFinal = if (clearLiveOutput) false else current.liveRagIsFinal,
                     )
 
                     when (state) {
@@ -670,6 +680,7 @@ class GlassesViewModel(
                         liveAssistantText = finalAssistantText,
                         hasVisibleOutput = finalAssistantText.isNotBlank() || it.liveRagText.isNotBlank(),
                         displayUsesResponseFontScale = true,
+                        liveRagIsFinal = it.liveRagIsFinal,
                         isPaginated = false,
                         currentPage = 0,
                         totalPages = 1,
@@ -726,6 +737,8 @@ class GlassesViewModel(
                             isAwaitingAnalysis = false,
                             hasVisibleOutput = false,
                             displayUsesResponseFontScale = false,
+                            liveRagText = "",
+                            liveRagIsFinal = false,
                             displayText = "",
                         ),
                         defaultDisplayText = "",
@@ -786,6 +799,7 @@ class GlassesViewModel(
                             liveRagEnabled = liveSessionPayload.liveRagEnabled,
                             liveAssistantText = "",
                             liveRagText = "",
+                            liveRagIsFinal = false,
                             liveRagDisplayMode = liveSessionPayload.ragDisplayMode,
                             hasVisibleOutput = !liveSessionPayload.canToggleFromGlasses,
                             displayText = if (liveSessionPayload.canToggleFromGlasses) {
@@ -832,6 +846,7 @@ class GlassesViewModel(
                             liveRagEnabled = liveSessionPayload.liveRagEnabled,
                             liveAssistantText = "",
                             liveRagText = "",
+                            liveRagIsFinal = false,
                             liveRagDisplayMode = liveSessionPayload.ragDisplayMode,
                             hasVisibleOutput = false,
                             displayText = "",
@@ -858,6 +873,7 @@ class GlassesViewModel(
                             state.copy(
                                 liveAssistantText = clearedAssistantText,
                                 liveRagText = clearedRagText,
+                                liveRagIsFinal = if (isNewLiveTurn) false else state.liveRagIsFinal,
                                 userTranscript = text,
                                 liveTranscription = text,
                                 hasVisibleOutput = text.isNotBlank(),
@@ -930,6 +946,7 @@ class GlassesViewModel(
                                 )
                                 state.copy(
                                     liveRagText = text,
+                                    liveRagIsFinal = parsed?.isFinal == true,
                                     hasVisibleOutput = state.liveAssistantText.isNotBlank() || text.isNotBlank(),
                                     displayUsesResponseFontScale = true,
                                     displayText = if (
@@ -1092,6 +1109,8 @@ class GlassesViewModel(
     }
 
     private fun applyLiveSessionConfig(payload: LiveSessionControlPayload) {
+        val liveRagSplitScrollMode = payload.splitScrollMode
+        val liveRagAutoScrollSpeedLevel = payload.autoScrollSpeedLevel.coerceIn(0, 4)
         if (payload.cameraMode.isNullOrBlank()) {
             liveCameraMode = LiveCameraStreamingMode.REALTIME
             videoFrameIntervalMs = 1000L
@@ -1101,6 +1120,8 @@ class GlassesViewModel(
                     liveInputSource = payload.effectiveInputSource,
                     liveRagEnabled = false,
                     liveRagDisplayMode = LiveRagDisplayMode.RAG_RESULT_ONLY,
+                    liveRagSplitScrollMode = liveRagSplitScrollMode,
+                    liveRagAutoScrollSpeedLevel = liveRagAutoScrollSpeedLevel,
                 )
             }
             return
@@ -1127,6 +1148,8 @@ class GlassesViewModel(
                     liveInputSource = payload.effectiveInputSource,
                     liveRagEnabled = liveRagEnabled,
                     liveRagDisplayMode = ragDisplayMode,
+                    liveRagSplitScrollMode = liveRagSplitScrollMode,
+                    liveRagAutoScrollSpeedLevel = liveRagAutoScrollSpeedLevel,
                 )
             }
         } catch (e: Exception) {
@@ -1139,6 +1162,8 @@ class GlassesViewModel(
                     liveInputSource = payload.effectiveInputSource,
                     liveRagEnabled = false,
                     liveRagDisplayMode = LiveRagDisplayMode.RAG_RESULT_ONLY,
+                    liveRagSplitScrollMode = liveRagSplitScrollMode,
+                    liveRagAutoScrollSpeedLevel = liveRagAutoScrollSpeedLevel,
                 )
             }
         }
@@ -1197,6 +1222,7 @@ class GlassesViewModel(
             aiResponse = responseText,
             liveAssistantText = "",
             liveRagText = "",
+            liveRagIsFinal = false,
             displayUsesResponseFontScale = true,
             displayText = displayText,
             hintText = hintText,
@@ -1264,6 +1290,7 @@ class GlassesViewModel(
                     hasVisibleOutput = false,
                     liveAssistantText = "",
                     liveRagText = "",
+                    liveRagIsFinal = false,
                     displayText = context.getString(R.string.tap_touchpad_start),
                     hintText = context.getString(R.string.tap_touchpad_record),
                 ),
@@ -1275,6 +1302,25 @@ class GlassesViewModel(
 
     fun dismissOutput() {
         dismissPagination()
+    }
+
+    fun handleDirectionalNavigation(command: LiveRagManualScrollCommand): Boolean {
+        val state = _uiState.value
+        if (state.isPaginated) {
+            when (command) {
+                LiveRagManualScrollCommand.UP -> previousPage()
+                LiveRagManualScrollCommand.DOWN -> nextPage()
+            }
+            return true
+        }
+
+        val livePanelContent = resolveCurrentLivePanelContent(state)
+        if (!livePanelContent.manualScrollRightPanel) {
+            return false
+        }
+
+        _liveRagManualScrollCommands.tryEmit(command)
+        return true
     }
 
     fun handlePrimaryAction() {
@@ -1293,6 +1339,20 @@ class GlassesViewModel(
                 Message(type = MessageType.LIVE_SESSION_TOGGLE_REQUEST)
             )
         }
+    }
+
+    private fun resolveCurrentLivePanelContent(
+        state: GlassesUiState = _uiState.value,
+    ): GlassesLivePanelContent {
+        return resolveLivePanelContent(
+            isLiveModeActive = state.isLiveModeActive,
+            liveRagEnabled = state.liveRagEnabled,
+            ragDisplayMode = state.liveRagDisplayMode,
+            splitScrollMode = state.liveRagSplitScrollMode,
+            assistantText = state.liveAssistantText,
+            ragText = state.liveRagText,
+            ragTextFinalized = state.liveRagIsFinal,
+        )
     }
 
     private fun resolveLiveSessionControlPayload(

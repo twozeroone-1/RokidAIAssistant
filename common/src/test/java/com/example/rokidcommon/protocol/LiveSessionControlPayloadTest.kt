@@ -15,6 +15,8 @@ class LiveSessionControlPayloadTest {
             cameraIntervalSec = 1,
             liveRagEnabled = true,
             ragDisplayMode = LiveRagDisplayMode.SPLIT_LIVE_AND_RAG,
+            splitScrollMode = LiveRagSplitScrollMode.MANUAL,
+            autoScrollSpeedLevel = 4,
         )
 
         val restored = LiveSessionControlPayload.fromPayload(payload.toPayloadString())
@@ -33,6 +35,8 @@ class LiveSessionControlPayloadTest {
             cameraIntervalSec = 1,
             liveRagEnabled = false,
             ragDisplayMode = LiveRagDisplayMode.RAG_RESULT_ONLY,
+            splitScrollMode = LiveRagSplitScrollMode.AUTO,
+            autoScrollSpeedLevel = 2,
         )
 
         val restored = LiveSessionControlPayload.fromPayload(payload.toPayloadString())
@@ -53,6 +57,8 @@ class LiveSessionControlPayloadTest {
         assertThat(restored.effectiveInputSource).isEqualTo(LiveControlInputSource.UNKNOWN)
         assertThat(restored.cameraMode).isEqualTo("REALTIME")
         assertThat(restored.cameraIntervalSec).isEqualTo(1)
+        assertThat(restored.splitScrollMode).isEqualTo(LiveRagSplitScrollMode.AUTO)
+        assertThat(restored.autoScrollSpeedLevel).isEqualTo(2)
         assertThat(restored.canToggleFromGlasses).isFalse()
     }
 }

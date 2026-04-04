@@ -1,6 +1,7 @@
 package com.example.rokidphone.data
 
 import com.example.rokidcommon.protocol.LiveRagDisplayMode
+import com.example.rokidcommon.protocol.LiveRagSplitScrollMode
 import com.example.rokidphone.service.stt.SttProvider
 import com.google.common.truth.Truth.assertThat
 import org.junit.Test
@@ -38,6 +39,19 @@ class ApiSettingsTest {
         assertThat(settings.liveOutputTarget).isEqualTo(LiveOutputTarget.AUTO)
         assertThat(settings.liveCameraMode).isEqualTo(LiveCameraMode.OFF)
         assertThat(settings.liveCameraIntervalSec).isEqualTo(5)
+        assertThat(settings.liveRagSplitScrollMode).isEqualTo(LiveRagSplitScrollMode.AUTO)
+        assertThat(settings.liveRagAutoScrollSpeedLevel)
+            .isEqualTo(ApiSettings.DEFAULT_LIVE_RAG_AUTO_SCROLL_SPEED_LEVEL)
+    }
+
+    @Test
+    fun `live rag auto scroll speed level clamps into supported range`() {
+        assertThat(ApiSettings.clampLiveRagAutoScrollSpeedLevel(-3)).isEqualTo(
+            ApiSettings.MIN_LIVE_RAG_AUTO_SCROLL_SPEED_LEVEL
+        )
+        assertThat(ApiSettings.clampLiveRagAutoScrollSpeedLevel(99)).isEqualTo(
+            ApiSettings.MAX_LIVE_RAG_AUTO_SCROLL_SPEED_LEVEL
+        )
     }
 
     @Test

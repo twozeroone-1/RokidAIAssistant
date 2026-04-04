@@ -5,6 +5,7 @@ import android.content.SharedPreferences
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 import com.example.rokidcommon.protocol.LiveRagDisplayMode
+import com.example.rokidcommon.protocol.LiveRagSplitScrollMode
 import com.example.rokidphone.R
 import com.example.rokidphone.service.stt.SttProvider
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -36,6 +37,8 @@ class SettingsRepository(private val context: Context) {
         private const val KEY_LIVE_THINKING_LEVEL = "live_thinking_level"
         private const val KEY_LIVE_THOUGHT_SUMMARIES_ENABLED = "live_thought_summaries_enabled"
         private const val KEY_LIVE_RAG_DISPLAY_MODE = "live_rag_display_mode"
+        private const val KEY_LIVE_RAG_SPLIT_SCROLL_MODE = "live_rag_split_scroll_mode"
+        private const val KEY_LIVE_RAG_AUTO_SCROLL_SPEED_LEVEL = "live_rag_auto_scroll_speed_level"
         private const val KEY_LIVE_INPUT_SOURCE = "live_input_source"
         private const val KEY_LIVE_OUTPUT_TARGET = "live_output_target"
         private const val KEY_LIVE_CAMERA_MODE = "live_camera_mode"
@@ -189,6 +192,15 @@ class SettingsRepository(private val context: Context) {
             liveRagDisplayMode = LiveRagDisplayMode.fromRaw(
                 prefs.getString(KEY_LIVE_RAG_DISPLAY_MODE, LiveRagDisplayMode.RAG_RESULT_ONLY.name)
             ),
+            liveRagSplitScrollMode = LiveRagSplitScrollMode.fromRaw(
+                prefs.getString(KEY_LIVE_RAG_SPLIT_SCROLL_MODE, LiveRagSplitScrollMode.AUTO.name)
+            ),
+            liveRagAutoScrollSpeedLevel = ApiSettings.clampLiveRagAutoScrollSpeedLevel(
+                prefs.getInt(
+                    KEY_LIVE_RAG_AUTO_SCROLL_SPEED_LEVEL,
+                    ApiSettings.DEFAULT_LIVE_RAG_AUTO_SCROLL_SPEED_LEVEL
+                )
+            ),
             liveInputSource = LiveInputSource.valueOf(
                 prefs.getString(KEY_LIVE_INPUT_SOURCE, LiveInputSource.AUTO.name) ?: LiveInputSource.AUTO.name
             ),
@@ -306,6 +318,9 @@ class SettingsRepository(private val context: Context) {
     fun saveSettings(settings: ApiSettings) {
         val normalizedSettings = settings.copy(
             responseFontScalePercent = ApiSettings.snapResponseFontScalePercent(settings.responseFontScalePercent),
+            liveRagAutoScrollSpeedLevel = ApiSettings.clampLiveRagAutoScrollSpeedLevel(
+                settings.liveRagAutoScrollSpeedLevel
+            ),
             geminiApiKey = normalizeGeminiKeyInput(settings.geminiApiKey),
             anythingLlmServerUrl = normalizeAnythingLlmServerUrl(settings.anythingLlmServerUrl),
             anythingLlmApiKey = normalizeAnythingLlmApiKey(settings.anythingLlmApiKey),
@@ -327,6 +342,8 @@ class SettingsRepository(private val context: Context) {
             putString(KEY_LIVE_THINKING_LEVEL, normalizedSettings.liveThinkingLevel.name)
             putBoolean(KEY_LIVE_THOUGHT_SUMMARIES_ENABLED, normalizedSettings.liveThoughtSummariesEnabled)
             putString(KEY_LIVE_RAG_DISPLAY_MODE, normalizedSettings.liveRagDisplayMode.name)
+            putString(KEY_LIVE_RAG_SPLIT_SCROLL_MODE, normalizedSettings.liveRagSplitScrollMode.name)
+            putInt(KEY_LIVE_RAG_AUTO_SCROLL_SPEED_LEVEL, normalizedSettings.liveRagAutoScrollSpeedLevel)
             putString(KEY_LIVE_INPUT_SOURCE, normalizedSettings.liveInputSource.name)
             putString(KEY_LIVE_OUTPUT_TARGET, normalizedSettings.liveOutputTarget.name)
             putString(KEY_LIVE_CAMERA_MODE, normalizedSettings.liveCameraMode.name)

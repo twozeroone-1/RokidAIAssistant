@@ -23,6 +23,8 @@ data class LiveSessionControlPayload(
     val cameraIntervalSec: Int? = null,
     val liveRagEnabled: Boolean = false,
     val ragDisplayMode: LiveRagDisplayMode = LiveRagDisplayMode.RAG_RESULT_ONLY,
+    val splitScrollMode: LiveRagSplitScrollMode = LiveRagSplitScrollMode.AUTO,
+    val autoScrollSpeedLevel: Int = 2,
 ) {
     val canToggleFromGlasses: Boolean
         get() = liveModeEnabled
@@ -50,7 +52,13 @@ data class LiveSessionControlPayload(
             append(if (liveRagEnabled) "true" else "false")
             append(",\"ragDisplayMode\":\"")
             append(escapeLiveControlJson(ragDisplayMode.name))
-            append("\"}")
+            append('"')
+            append(",\"splitScrollMode\":\"")
+            append(escapeLiveControlJson(splitScrollMode.name))
+            append('"')
+            append(",\"autoScrollSpeedLevel\":")
+            append(autoScrollSpeedLevel)
+            append('}')
         }
     }
 
@@ -76,6 +84,11 @@ data class LiveSessionControlPayload(
                 ragDisplayMode = LiveRagDisplayMode.fromRaw(
                     RAG_DISPLAY_MODE_REGEX.find(raw)?.groupValues?.getOrNull(1)?.let(::unescapeLiveControlJson)
                 ),
+                splitScrollMode = LiveRagSplitScrollMode.fromRaw(
+                    SPLIT_SCROLL_MODE_REGEX.find(raw)?.groupValues?.getOrNull(1)?.let(::unescapeLiveControlJson)
+                ),
+                autoScrollSpeedLevel = AUTO_SCROLL_SPEED_LEVEL_REGEX.find(raw)?.groupValues?.getOrNull(1)?.toIntOrNull()
+                    ?: 2,
             )
         }
 
@@ -86,6 +99,8 @@ data class LiveSessionControlPayload(
         private val CAMERA_INTERVAL_REGEX = Regex(""""cameraIntervalSec":(-?\d+)""")
         private val LIVE_RAG_ENABLED_REGEX = Regex(""""liveRagEnabled":(true|false)""")
         private val RAG_DISPLAY_MODE_REGEX = Regex(""""ragDisplayMode":"((?:\\\\.|[^"])*)"""")
+        private val SPLIT_SCROLL_MODE_REGEX = Regex(""""splitScrollMode":"((?:\\\\.|[^"])*)"""")
+        private val AUTO_SCROLL_SPEED_LEVEL_REGEX = Regex(""""autoScrollSpeedLevel":(-?\d+)""")
     }
 }
 

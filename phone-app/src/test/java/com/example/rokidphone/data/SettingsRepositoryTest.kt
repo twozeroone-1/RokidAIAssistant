@@ -3,6 +3,7 @@ package com.example.rokidphone.data
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import com.example.rokidcommon.protocol.LiveRagDisplayMode
+import com.example.rokidcommon.protocol.LiveRagSplitScrollMode
 import com.google.common.truth.Truth.assertThat
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -145,6 +146,8 @@ class SettingsRepositoryTest {
                 liveThinkingLevel = LiveThinkingLevel.MEDIUM,
                 liveThoughtSummariesEnabled = true,
                 liveRagDisplayMode = LiveRagDisplayMode.SPLIT_LIVE_AND_RAG,
+                liveRagSplitScrollMode = LiveRagSplitScrollMode.MANUAL,
+                liveRagAutoScrollSpeedLevel = 4,
                 liveInputSource = LiveInputSource.GLASSES,
                 liveOutputTarget = LiveOutputTarget.BOTH,
                 liveCameraMode = LiveCameraMode.INTERVAL,
@@ -163,9 +166,24 @@ class SettingsRepositoryTest {
         assertThat(reloadedSettings.liveThinkingLevel).isEqualTo(LiveThinkingLevel.MEDIUM)
         assertThat(reloadedSettings.liveThoughtSummariesEnabled).isTrue()
         assertThat(reloadedSettings.liveRagDisplayMode).isEqualTo(LiveRagDisplayMode.SPLIT_LIVE_AND_RAG)
+        assertThat(reloadedSettings.liveRagSplitScrollMode).isEqualTo(LiveRagSplitScrollMode.MANUAL)
+        assertThat(reloadedSettings.liveRagAutoScrollSpeedLevel).isEqualTo(4)
         assertThat(reloadedSettings.liveInputSource).isEqualTo(LiveInputSource.GLASSES)
         assertThat(reloadedSettings.liveOutputTarget).isEqualTo(LiveOutputTarget.BOTH)
         assertThat(reloadedSettings.liveCameraMode).isEqualTo(LiveCameraMode.INTERVAL)
         assertThat(reloadedSettings.liveCameraIntervalSec).isEqualTo(10)
+    }
+
+    @Test
+    fun `saveSettings clamps live rag auto scroll speed level`() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val repository = SettingsRepository(context)
+
+        repository.saveSettings(ApiSettings(liveRagAutoScrollSpeedLevel = 99))
+
+        val reloadedSettings = SettingsRepository(context).getSettings()
+
+        assertThat(reloadedSettings.liveRagAutoScrollSpeedLevel)
+            .isEqualTo(ApiSettings.MAX_LIVE_RAG_AUTO_SCROLL_SPEED_LEVEL)
     }
 }

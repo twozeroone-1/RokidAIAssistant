@@ -12,12 +12,15 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.core.view.WindowCompat
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -40,9 +43,14 @@ import com.example.rokidglasses.viewmodel.GlassesDisplayStage
 import com.example.rokidglasses.viewmodel.GlassesLivePanelContent
 import com.example.rokidglasses.viewmodel.GlassesViewModel
 import com.example.rokidglasses.viewmodel.deriveDisplayStage
+import com.example.rokidglasses.viewmodel.LiveRagManualScrollCommand
+import com.example.rokidglasses.viewmodel.LIVE_RAG_MANUAL_SCROLL_STEP_PX
 import com.example.rokidglasses.viewmodel.resolveLivePanelContent
+import com.example.rokidglasses.viewmodel.resolveLiveRagAutoScrollDurationMillis
 import com.example.rokidglasses.viewmodel.responseFontScaleMultiplier
 import com.example.rokidglasses.viewmodel.toSleepModeSnapshot
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
 
 class MainActivity : ComponentActivity() {
     
@@ -109,8 +117,8 @@ class MainActivity : ComponentActivity() {
     
     /**
      * Handle physical key events from Rokid touchpad
-     * - DPAD_UP / Volume Up: Previous page
-     * - DPAD_DOWN / Volume Down: Next page
+     * - DPAD_UP / Volume Up: Previous page or manual RAG scroll up
+     * - DPAD_DOWN / Volume Down: Next page or manual RAG scroll down
      * - DPAD_CENTER / Enter: Toggle recording (tap) or capture photo (long press)
      */
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
@@ -118,13 +126,10 @@ class MainActivity : ComponentActivity() {
         android.util.Log.d("MainActivity", "onKeyDown: keyCode=$keyCode (${KeyEvent.keyCodeToString(keyCode)}), scanCode=${event?.scanCode}, repeat=${event?.repeatCount}")
         
         val viewModel = glassesViewModel ?: return super.onKeyDown(keyCode, event)
-        val uiState = viewModel.uiState.value
-        
         return when (keyCode) {
             // Swipe up on touchpad / Volume up = Previous page
             KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_VOLUME_UP -> {
-                if (uiState.isPaginated) {
-                    viewModel.previousPage()
+                if (viewModel.handleDirectionalNavigation(LiveRagManualScrollCommand.UP)) {
                     true
                 } else {
                     super.onKeyDown(keyCode, event)
@@ -132,8 +137,7 @@ class MainActivity : ComponentActivity() {
             }
             // Swipe down on touchpad / Volume down = Next page
             KeyEvent.KEYCODE_DPAD_DOWN, KeyEvent.KEYCODE_VOLUME_DOWN -> {
-                if (uiState.isPaginated) {
-                    viewModel.nextPage()
+                if (viewModel.handleDirectionalNavigation(LiveRagManualScrollCommand.DOWN)) {
                     true
                 } else {
                     super.onKeyDown(keyCode, event)
@@ -357,18 +361,23 @@ fun GlassesMainScreen(
         
         // Main display area (centered)
         if (!shouldUseSleepMode || sleepModeStage == GlassesDisplayStage.OUTPUT) {
+            val livePanelContent = resolveLivePanelContent(
+                isLiveModeActive = uiState.isLiveModeActive,
+                liveRagEnabled = uiState.liveRagEnabled,
+                ragDisplayMode = uiState.liveRagDisplayMode,
+                splitScrollMode = uiState.liveRagSplitScrollMode,
+                assistantText = uiState.liveAssistantText,
+                ragText = uiState.liveRagText,
+                ragTextFinalized = uiState.liveRagIsFinal,
+            )
             MainDisplayArea(
                 displayText = uiState.displayText,
-                livePanelContent = resolveLivePanelContent(
-                    isLiveModeActive = uiState.isLiveModeActive,
-                    liveRagEnabled = uiState.liveRagEnabled,
-                    ragDisplayMode = uiState.liveRagDisplayMode,
-                    assistantText = uiState.liveAssistantText,
-                    ragText = uiState.liveRagText,
-                ),
+                livePanelContent = livePanelContent,
                 isProcessing = uiState.isProcessing && !shouldUseSleepMode,
                 responseFontScalePercent = uiState.responseFontScalePercent,
                 useResponseFontScale = uiState.displayUsesResponseFontScale,
+                liveRagAutoScrollSpeedLevel = uiState.liveRagAutoScrollSpeedLevel,
+                liveRagManualScrollCommands = viewModel.liveRagManualScrollCommands,
                 isPaginated = uiState.isPaginated,
                 currentPage = uiState.currentPage,
                 totalPages = uiState.totalPages,
@@ -566,6 +575,8 @@ fun MainDisplayArea(
     isProcessing: Boolean,
     responseFontScalePercent: Int,
     useResponseFontScale: Boolean,
+    liveRagAutoScrollSpeedLevel: Int,
+    liveRagManualScrollCommands: Flow<LiveRagManualScrollCommand>,
     isPaginated: Boolean = false,
     currentPage: Int = 0,
     totalPages: Int = 1,
@@ -620,6 +631,10 @@ fun MainDisplayArea(
                     modifier = Modifier.weight(1f),
                     fontSize = splitFontSize,
                     lineHeight = splitLineHeight,
+                    autoScroll = false,
+                    autoScrollSpeedLevel = liveRagAutoScrollSpeedLevel,
+                    manualScroll = false,
+                    manualScrollCommands = null,
                 )
                 SplitPanel(
                     title = stringResource(R.string.live_split_panel_rag),
@@ -627,6 +642,10 @@ fun MainDisplayArea(
                     modifier = Modifier.weight(1f),
                     fontSize = splitFontSize,
                     lineHeight = splitLineHeight,
+                    autoScroll = livePanelContent.autoScrollRightPanel,
+                    autoScrollSpeedLevel = liveRagAutoScrollSpeedLevel,
+                    manualScroll = livePanelContent.manualScrollRightPanel,
+                    manualScrollCommands = liveRagManualScrollCommands,
                 )
             }
         } else {
@@ -688,7 +707,66 @@ private fun SplitPanel(
     modifier: Modifier = Modifier,
     fontSize: Float,
     lineHeight: Float,
+    autoScroll: Boolean,
+    autoScrollSpeedLevel: Int,
+    manualScroll: Boolean,
+    manualScrollCommands: Flow<LiveRagManualScrollCommand>?,
 ) {
+    val scrollState = rememberScrollState()
+
+    LaunchedEffect(text, autoScroll, manualScroll, autoScrollSpeedLevel) {
+        if (text.isBlank()) {
+            scrollState.scrollTo(0)
+            return@LaunchedEffect
+        }
+
+        if (!autoScroll) {
+            if (!manualScroll) {
+                scrollState.scrollTo(0)
+            }
+            return@LaunchedEffect
+        }
+
+        withFrameNanos { }
+        withFrameNanos { }
+        val durationMillis = resolveLiveRagAutoScrollDurationMillis(
+            maxScrollPx = scrollState.maxValue,
+            speedLevel = autoScrollSpeedLevel,
+        ) ?: return@LaunchedEffect
+        scrollState.scrollTo(0)
+        withFrameNanos { }
+        withFrameNanos { }
+        val maxValue = scrollState.maxValue
+        if (maxValue <= 0) {
+            return@LaunchedEffect
+        }
+        delay(500)
+        scrollState.animateScrollTo(
+            value = maxValue,
+            animationSpec = tween(durationMillis = durationMillis),
+        )
+    }
+
+    LaunchedEffect(manualScroll, manualScrollCommands) {
+        if (!manualScroll || manualScrollCommands == null) {
+            return@LaunchedEffect
+        }
+
+        manualScrollCommands.collect { command ->
+            val delta = when (command) {
+                LiveRagManualScrollCommand.UP -> -LIVE_RAG_MANUAL_SCROLL_STEP_PX
+                LiveRagManualScrollCommand.DOWN -> LIVE_RAG_MANUAL_SCROLL_STEP_PX
+            }
+            val targetValue = (scrollState.value + delta).coerceIn(0, scrollState.maxValue)
+            if (targetValue != scrollState.value) {
+                scrollState.animateScrollTo(
+                    value = targetValue,
+                    animationSpec = tween(durationMillis = 180),
+                )
+            }
+        }
+    }
+
     Column(
         modifier = modifier,
         horizontalAlignment = Alignment.Start,
@@ -700,12 +778,19 @@ private fun SplitPanel(
             fontSize = GlassesTypographyTokens.MainResponseSplitTitleSp.sp,
             fontWeight = FontWeight.Bold,
         )
-        Text(
-            text = text,
-            color = Color.White,
-            fontSize = fontSize.sp,
-            lineHeight = lineHeight.sp,
-        )
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(max = 220.dp)
+                .verticalScroll(scrollState)
+        ) {
+            Text(
+                text = text,
+                color = Color.White,
+                fontSize = fontSize.sp,
+                lineHeight = lineHeight.sp,
+            )
+        }
     }
 }
 

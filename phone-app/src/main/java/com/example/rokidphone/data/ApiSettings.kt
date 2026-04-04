@@ -2,6 +2,7 @@ package com.example.rokidphone.data
 
 import androidx.annotation.StringRes
 import com.example.rokidcommon.protocol.LiveRagDisplayMode
+import com.example.rokidcommon.protocol.LiveRagSplitScrollMode
 import com.example.rokidphone.R
 import com.example.rokidphone.service.stt.SttProvider
 import kotlin.math.roundToInt
@@ -754,6 +755,8 @@ data class ApiSettings(
     val liveThinkingLevel: LiveThinkingLevel = LiveThinkingLevel.DEFAULT,
     val liveThoughtSummariesEnabled: Boolean = false,
     val liveRagDisplayMode: LiveRagDisplayMode = LiveRagDisplayMode.RAG_RESULT_ONLY,
+    val liveRagSplitScrollMode: LiveRagSplitScrollMode = LiveRagSplitScrollMode.AUTO,
+    val liveRagAutoScrollSpeedLevel: Int = DEFAULT_LIVE_RAG_AUTO_SCROLL_SPEED_LEVEL,
     val liveInputSource: LiveInputSource = LiveInputSource.AUTO,
     val liveOutputTarget: LiveOutputTarget = LiveOutputTarget.AUTO,
     val liveCameraMode: LiveCameraMode = LiveCameraMode.OFF,
@@ -904,11 +907,21 @@ data class ApiSettings(
         const val MAX_RESPONSE_FONT_SCALE_PERCENT = 140
         const val DEFAULT_RESPONSE_FONT_SCALE_PERCENT = 85
         const val RESPONSE_FONT_SCALE_STEP_PERCENT = 5
+        const val MIN_LIVE_RAG_AUTO_SCROLL_SPEED_LEVEL = 0
+        const val MAX_LIVE_RAG_AUTO_SCROLL_SPEED_LEVEL = 4
+        const val DEFAULT_LIVE_RAG_AUTO_SCROLL_SPEED_LEVEL = 2
 
         fun clampResponseFontScalePercent(value: Int): Int {
             return value.coerceIn(
                 MIN_RESPONSE_FONT_SCALE_PERCENT,
                 MAX_RESPONSE_FONT_SCALE_PERCENT
+            )
+        }
+
+        fun clampLiveRagAutoScrollSpeedLevel(value: Int): Int {
+            return value.coerceIn(
+                MIN_LIVE_RAG_AUTO_SCROLL_SPEED_LEVEL,
+                MAX_LIVE_RAG_AUTO_SCROLL_SPEED_LEVEL
             )
         }
 

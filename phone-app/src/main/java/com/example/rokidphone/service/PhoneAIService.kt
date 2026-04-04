@@ -239,6 +239,7 @@ class PhoneAIService : Service() {
                     handleLiveModeTransition(validatedNewSettings)
                     syncSleepModeSetting(validatedNewSettings)
                     syncResponseFontScaleSetting(validatedNewSettings)
+                    syncLiveSessionStateToGlasses(validatedNewSettings)
                     lastAppliedSettings = validatedNewSettings
                     
                     Log.d(
@@ -1472,6 +1473,10 @@ class PhoneAIService : Service() {
             cameraIntervalSec = settings.liveCameraIntervalSec,
             liveRagEnabled = settings.liveRagEnabled,
             ragDisplayMode = effectiveRagDisplayMode,
+            splitScrollMode = settings.liveRagSplitScrollMode,
+            autoScrollSpeedLevel = ApiSettings.clampLiveRagAutoScrollSpeedLevel(
+                settings.liveRagAutoScrollSpeedLevel
+            ),
         ).toPayloadString()
     }
 

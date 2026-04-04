@@ -37,6 +37,16 @@
     <string name="live_rag_display_mode">Live RAG display mode</string>
     <string name="live_rag_display_mode_rag_only">Show RAG result only</string>
     <string name="live_rag_display_mode_split">Split live answer + RAG result</string>
+    <string name="live_rag_split_scroll_mode">Split RAG scroll mode</string>
+    <string name="live_rag_split_scroll_mode_auto">Auto scroll</string>
+    <string name="live_rag_split_scroll_mode_manual">Manual scroll (DPAD up/down)</string>
+    <string name="live_rag_auto_scroll_speed">Auto-scroll speed</string>
+    <string name="live_rag_auto_scroll_speed_description">Only applies after the final RAG result arrives in split display.</string>
+    <string name="live_rag_auto_scroll_speed_very_slow">Very slow</string>
+    <string name="live_rag_auto_scroll_speed_slow">Slow</string>
+    <string name="live_rag_auto_scroll_speed_normal">Normal</string>
+    <string name="live_rag_auto_scroll_speed_fast">Fast</string>
+    <string name="live_rag_auto_scroll_speed_very_fast">Very fast</string>
     <string name="live_barge_in">Interrupt assistant while speaking</string>
     <string name="live_barge_in_description">When enabled, your speech immediately stops the current Gemini Live reply and starts a new turn.</string>
     <string name="live_voice">Live voice</string>

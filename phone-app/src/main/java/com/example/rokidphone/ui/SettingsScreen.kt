@@ -27,6 +27,7 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.example.rokidcommon.protocol.LiveRagDisplayMode
+import com.example.rokidcommon.protocol.LiveRagSplitScrollMode
 import com.example.rokidphone.R
 import com.example.rokidphone.data.*
 import com.example.rokidphone.service.ai.AiServiceFactory
@@ -199,6 +200,39 @@ fun SettingsScreen(
                                     onSettingsChange(settings.copy(liveRagDisplayMode = mode))
                                 }
                             )
+
+                            if (settings.liveRagDisplayMode == LiveRagDisplayMode.SPLIT_LIVE_AND_RAG) {
+                                Spacer(modifier = Modifier.height(12.dp))
+                                LiveRagSplitScrollModeSelector(
+                                    selectedMode = settings.liveRagSplitScrollMode,
+                                    onModeSelected = { mode ->
+                                        onSettingsChange(settings.copy(liveRagSplitScrollMode = mode))
+                                    }
+                                )
+
+                                if (settings.liveRagSplitScrollMode == LiveRagSplitScrollMode.AUTO) {
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    SettingsSliderRow(
+                                        title = stringResource(R.string.live_rag_auto_scroll_speed),
+                                        subtitle = stringResource(R.string.live_rag_auto_scroll_speed_description),
+                                        value = settings.liveRagAutoScrollSpeedLevel.toFloat(),
+                                        valueRange = ApiSettings.MIN_LIVE_RAG_AUTO_SCROLL_SPEED_LEVEL.toFloat()..
+                                            ApiSettings.MAX_LIVE_RAG_AUTO_SCROLL_SPEED_LEVEL.toFloat(),
+                                        steps = ApiSettings.MAX_LIVE_RAG_AUTO_SCROLL_SPEED_LEVEL -
+                                            ApiSettings.MIN_LIVE_RAG_AUTO_SCROLL_SPEED_LEVEL - 1,
+                                        valueText = liveRagAutoScrollSpeedLabel(settings.liveRagAutoScrollSpeedLevel),
+                                        onValueChange = { value ->
+                                            onSettingsChange(
+                                                settings.copy(
+                                                    liveRagAutoScrollSpeedLevel = ApiSettings.clampLiveRagAutoScrollSpeedLevel(
+                                                        value.roundToInt()
+                                                    )
+                                                )
+                                            )
+                                        }
+                                    )
+                                }
+                            }
                         }
 
                         HorizontalDivider()
@@ -1129,6 +1163,64 @@ private fun LiveRagDisplayModeSelector(
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun LiveRagSplitScrollModeSelector(
+    selectedMode: LiveRagSplitScrollMode,
+    onModeSelected: (LiveRagSplitScrollMode) -> Unit,
+) {
+    Column(
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+        modifier = Modifier.padding(start = 8.dp)
+    ) {
+        Text(
+            text = stringResource(R.string.live_rag_split_scroll_mode),
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+
+        LiveRagSplitScrollMode.entries.forEach { mode ->
+            val title = when (mode) {
+                LiveRagSplitScrollMode.AUTO ->
+                    stringResource(R.string.live_rag_split_scroll_mode_auto)
+                LiveRagSplitScrollMode.MANUAL ->
+                    stringResource(R.string.live_rag_split_scroll_mode_manual)
+            }
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .selectable(
+                        selected = selectedMode == mode,
+                        onClick = { onModeSelected(mode) }
+                    )
+                    .padding(vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                RadioButton(
+                    selected = selectedMode == mode,
+                    onClick = { onModeSelected(mode) }
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun liveRagAutoScrollSpeedLabel(level: Int): String {
+    return when (ApiSettings.clampLiveRagAutoScrollSpeedLevel(level)) {
+        0 -> stringResource(R.string.live_rag_auto_scroll_speed_very_slow)
+        1 -> stringResource(R.string.live_rag_auto_scroll_speed_slow)
+        2 -> stringResource(R.string.live_rag_auto_scroll_speed_normal)
+        3 -> stringResource(R.string.live_rag_auto_scroll_speed_fast)
+        else -> stringResource(R.string.live_rag_auto_scroll_speed_very_fast)
     }
 }
 
