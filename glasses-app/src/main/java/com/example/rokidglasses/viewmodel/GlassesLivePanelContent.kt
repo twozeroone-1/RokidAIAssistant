@@ -29,11 +29,11 @@ fun resolveLiveRagAutoScrollDurationMillis(
     }
 
     val pixelsPerSecond = when (speedLevel.coerceIn(0, 4)) {
-        0 -> 12
-        1 -> 18
-        2 -> 26
-        3 -> 36
-        else -> 48
+        0 -> 6
+        1 -> 9
+        2 -> 12
+        3 -> 18
+        else -> 24
     }
 
     return ((maxScrollPx * 1000.0) / pixelsPerSecond).toInt()

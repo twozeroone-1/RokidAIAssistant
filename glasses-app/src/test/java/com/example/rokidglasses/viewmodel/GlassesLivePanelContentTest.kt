@@ -112,13 +112,23 @@ class GlassesLivePanelContentTest {
     }
 
     @Test
+    fun `normal auto scroll uses 12 pixels per second pacing`() {
+        val duration = resolveLiveRagAutoScrollDurationMillis(
+            maxScrollPx = 600,
+            speedLevel = 2,
+        )
+
+        assertThat(duration).isEqualTo(50000)
+    }
+
+    @Test
     fun `very slow auto scroll stays slow enough for a short panel`() {
         val duration = resolveLiveRagAutoScrollDurationMillis(
             maxScrollPx = 220,
             speedLevel = 0,
         )
 
-        assertThat(duration).isAtLeast(15000)
+        assertThat(duration).isAtLeast(30000)
     }
 
     @Test
