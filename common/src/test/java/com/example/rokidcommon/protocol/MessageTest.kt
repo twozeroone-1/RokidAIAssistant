@@ -133,6 +133,14 @@ class MessageTest {
         assertThat(msg.payload).isEqualTo("128")
     }
 
+    @Test
+    fun `liveMinimalUiConfig creates LIVE_MINIMAL_UI_CONFIG message`() {
+        val msg = Message.liveMinimalUiConfig(true)
+
+        assertThat(msg.type.name).isEqualTo("LIVE_MINIMAL_UI_CONFIG")
+        assertThat(msg.payload).isEqualTo("true")
+    }
+
     // ==================== JSON serialization ====================
 
     @Test

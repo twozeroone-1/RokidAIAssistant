@@ -28,8 +28,8 @@
     <string name="please_wait">Please wait</string>
     <string name="tap_touchpad_start">Tap touchpad to start conversation</string>
     <string name="tap_stop_recording">Tap again to stop recording</string>
-    <string name="live_phone_speak_hint">Speak now</string>
-    <string name="live_phone_resume_hint">Tap to resume live</string>
+    <string name="live_phone_speak_hint">Active</string>
+    <string name="live_phone_resume_hint">Standby</string>
     <string name="select_paired_device">Select paired device</string>
     <string name="sending_audio">Sending audio to phone...</string>
     <string name="no_voice_detected">No voice detected</string>

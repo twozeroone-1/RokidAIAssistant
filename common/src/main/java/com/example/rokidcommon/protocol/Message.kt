@@ -132,6 +132,11 @@ data class Message(
             payload = percent.toString()
         )
 
+        fun liveMinimalUiConfig(enabled: Boolean) = Message(
+            type = MessageType.LIVE_MINIMAL_UI_CONFIG,
+            payload = enabled.toString()
+        )
+
         fun photoData(photoChunk: ByteArray) = Message(
             type = MessageType.PHOTO_DATA,
             binaryData = photoChunk

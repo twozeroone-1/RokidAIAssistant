@@ -16,12 +16,12 @@ class GlassesLivePhoneControlTest {
             ),
             defaultDisplayText = "Tap touchpad to start conversation",
             defaultHintText = "Tap touchpad to start conversation",
-            livePhoneActiveHint = "말해주세요",
-            livePhoneResumeHint = "탭하여 실시간 다시 시작",
+            livePhoneActiveHint = "동작 중",
+            livePhoneResumeHint = "대기 중",
         )
 
         assertThat(prompt.displayText).isEmpty()
-        assertThat(prompt.hintText).isEqualTo("말해주세요")
+        assertThat(prompt.hintText).isEqualTo("동작 중")
     }
 
     @Test
@@ -34,12 +34,12 @@ class GlassesLivePhoneControlTest {
             ),
             defaultDisplayText = "Tap touchpad to start conversation",
             defaultHintText = "Tap touchpad to start conversation",
-            livePhoneActiveHint = "말해주세요",
-            livePhoneResumeHint = "탭하여 실시간 다시 시작",
+            livePhoneActiveHint = "동작 중",
+            livePhoneResumeHint = "대기 중",
         )
 
         assertThat(prompt.displayText).isEmpty()
-        assertThat(prompt.hintText).isEqualTo("탭하여 실시간 다시 시작")
+        assertThat(prompt.hintText).isEqualTo("대기 중")
     }
 
     @Test
@@ -52,8 +52,8 @@ class GlassesLivePhoneControlTest {
             ),
             defaultDisplayText = "Tap touchpad to start conversation",
             defaultHintText = "Tap touchpad to start recording",
-            livePhoneActiveHint = "말해주세요",
-            livePhoneResumeHint = "탭하여 실시간 다시 시작",
+            livePhoneActiveHint = "동작 중",
+            livePhoneResumeHint = "대기 중",
         )
 
         assertThat(prompt.displayText).isEqualTo("Tap touchpad to start conversation")

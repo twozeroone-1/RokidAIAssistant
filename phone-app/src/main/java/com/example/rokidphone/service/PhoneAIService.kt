@@ -238,6 +238,7 @@ class PhoneAIService : Service() {
                     }
                     handleLiveModeTransition(validatedNewSettings)
                     syncSleepModeSetting(validatedNewSettings)
+                    syncLiveMinimalUiSetting(validatedNewSettings)
                     syncResponseFontScaleSetting(validatedNewSettings)
                     syncLiveSessionStateToGlasses(validatedNewSettings)
                     lastAppliedSettings = validatedNewSettings
@@ -289,6 +290,7 @@ class PhoneAIService : Service() {
                                 cxrManager?.initBluetooth(device)
                             }
                             syncSleepModeSetting(settings)
+                            syncLiveMinimalUiSetting(settings)
                             syncResponseFontScaleSetting(settings, force = true)
                             syncLiveSessionStateToGlasses(settings)
                         }
@@ -465,6 +467,12 @@ class PhoneAIService : Service() {
                 type = MessageType.SLEEP_MODE_CONFIG,
                 payload = settings.glassesSleepModeEnabled.toString()
             )
+        )
+    }
+
+    private suspend fun syncLiveMinimalUiSetting(settings: ApiSettings) {
+        bluetoothManager?.sendMessage(
+            Message.liveMinimalUiConfig(settings.liveMinimalUiEnabled)
         )
     }
 

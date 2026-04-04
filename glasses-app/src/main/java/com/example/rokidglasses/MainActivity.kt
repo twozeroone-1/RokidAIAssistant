@@ -47,9 +47,12 @@ import com.example.rokidglasses.viewmodel.GlassesViewModel
 import com.example.rokidglasses.viewmodel.deriveDisplayStage
 import com.example.rokidglasses.viewmodel.LiveRagManualScrollCommand
 import com.example.rokidglasses.viewmodel.resolveLivePanelContent
+import com.example.rokidglasses.viewmodel.resolveDisplayTextRenderState
 import com.example.rokidglasses.viewmodel.resolveLiveRagAutoScrollDurationMillis
 import com.example.rokidglasses.viewmodel.resolveLiveRagManualScrollTarget
+import com.example.rokidglasses.viewmodel.resolveLiveMinimalDisplayText
 import com.example.rokidglasses.viewmodel.responseFontScaleMultiplier
+import com.example.rokidglasses.viewmodel.shouldUseLiveMinimalUi
 import com.example.rokidglasses.viewmodel.toSleepModeSnapshot
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
@@ -290,6 +293,14 @@ fun GlassesMainScreen(
     var showDeviceSelector by remember { mutableStateOf(false) }
     val sleepModeStage = remember(uiState) { deriveDisplayStage(uiState.toSleepModeSnapshot()) }
     val shouldUseSleepMode = uiState.sleepModeEnabled && !uiState.isLiveModeActive
+    val shouldUseLiveMinimalUi = uiState.shouldUseLiveMinimalUi()
+    val displayText = remember(uiState, shouldUseLiveMinimalUi) {
+        if (shouldUseLiveMinimalUi) {
+            uiState.resolveLiveMinimalDisplayText()
+        } else {
+            uiState.displayText
+        }
+    }
     
     // Track swipe gesture for pagination
     var swipeOffset by remember { mutableFloatStateOf(0f) }
@@ -339,7 +350,7 @@ fun GlassesMainScreen(
                     .align(Alignment.TopEnd)
                     .padding(16.dp)
             )
-        } else {
+        } else if (!shouldUseLiveMinimalUi) {
             StatusIndicator(
                 isConnected = uiState.isConnected,
                 isListening = uiState.isListening,
@@ -351,7 +362,11 @@ fun GlassesMainScreen(
         }
         
         // Page indicator (top left) - only show when paginated
-        if (uiState.isPaginated && (!shouldUseSleepMode || sleepModeStage == GlassesDisplayStage.OUTPUT)) {
+        if (
+            uiState.isPaginated &&
+            !shouldUseLiveMinimalUi &&
+            (!shouldUseSleepMode || sleepModeStage == GlassesDisplayStage.OUTPUT)
+        ) {
             PageIndicator(
                 currentPage = uiState.currentPage + 1,
                 totalPages = uiState.totalPages,
@@ -373,13 +388,15 @@ fun GlassesMainScreen(
                 ragTextFinalized = uiState.liveRagIsFinal,
             )
             MainDisplayArea(
-                displayText = uiState.displayText,
+                displayText = displayText,
                 livePanelContent = livePanelContent,
-                isProcessing = uiState.isProcessing && !shouldUseSleepMode,
+                isProcessing = uiState.isProcessing && !shouldUseSleepMode && !shouldUseLiveMinimalUi,
                 responseFontScalePercent = uiState.responseFontScalePercent,
                 useResponseFontScale = uiState.displayUsesResponseFontScale,
                 liveRagAutoScrollSpeedLevel = uiState.liveRagAutoScrollSpeedLevel,
                 liveRagManualScrollCommands = viewModel.liveRagManualScrollCommands,
+                showSplitPanelTitles = !shouldUseLiveMinimalUi,
+                showPaginationNavigationHints = !shouldUseLiveMinimalUi,
                 isPaginated = uiState.isPaginated,
                 currentPage = uiState.currentPage,
                 totalPages = uiState.totalPages,
@@ -388,7 +405,7 @@ fun GlassesMainScreen(
         }
         
         // Hint text (bottom)
-        if (!shouldUseSleepMode || sleepModeStage == GlassesDisplayStage.OUTPUT) {
+        if (!shouldUseLiveMinimalUi && (!shouldUseSleepMode || sleepModeStage == GlassesDisplayStage.OUTPUT)) {
             HintText(
                 hint = uiState.hintText,
                 modifier = Modifier
@@ -579,6 +596,8 @@ fun MainDisplayArea(
     useResponseFontScale: Boolean,
     liveRagAutoScrollSpeedLevel: Int,
     liveRagManualScrollCommands: Flow<LiveRagManualScrollCommand>,
+    showSplitPanelTitles: Boolean,
+    showPaginationNavigationHints: Boolean,
     isPaginated: Boolean = false,
     currentPage: Int = 0,
     totalPages: Int = 1,
@@ -601,6 +620,12 @@ fun MainDisplayArea(
     }
     val splitFontSize = GlassesTypographyTokens.MainResponseSplitSp * responseScale
     val splitLineHeight = GlassesTypographyTokens.MainResponseSplitLineHeightSp * responseScale
+    val displayRenderState = resolveDisplayTextRenderState(
+        text = displayText,
+        responseFontScalePercent = responseFontScalePercent,
+        useResponseFontScale = useResponseFontScale,
+        isPaginated = isPaginated,
+    )
 
     Column(
         modifier = modifier
@@ -630,6 +655,7 @@ fun MainDisplayArea(
                 SplitPanel(
                     title = stringResource(R.string.live_split_panel_live),
                     text = livePanelContent.leftText,
+                    showTitle = showSplitPanelTitles,
                     modifier = Modifier.weight(1f),
                     fontSize = splitFontSize,
                     lineHeight = splitLineHeight,
@@ -641,6 +667,7 @@ fun MainDisplayArea(
                 SplitPanel(
                     title = stringResource(R.string.live_split_panel_rag),
                     text = livePanelContent.rightText,
+                    showTitle = showSplitPanelTitles,
                     modifier = Modifier.weight(1f),
                     fontSize = splitFontSize,
                     lineHeight = splitLineHeight,
@@ -652,7 +679,7 @@ fun MainDisplayArea(
             }
         } else {
             AnimatedContent(
-                targetState = displayText,
+                targetState = displayRenderState,
                 transitionSpec = {
                     if (isPaginated) {
                         // Slide animation for pagination
@@ -663,9 +690,9 @@ fun MainDisplayArea(
                     }
                 },
                 label = "display_text"
-            ) { text ->
+            ) { renderState ->
                 Text(
-                    text = text,
+                    text = renderState.text,
                     color = Color.White,
                     fontSize = fontSize.sp,
                     fontWeight = FontWeight.Medium,
@@ -677,7 +704,7 @@ fun MainDisplayArea(
         }
         
         // Navigation hints for paginated content
-        if (isPaginated && !livePanelContent.showSplitPanels) {
+        if (showPaginationNavigationHints && isPaginated && !livePanelContent.showSplitPanels) {
             Spacer(modifier = Modifier.height(16.dp))
             Row(
                 horizontalArrangement = Arrangement.spacedBy(16.dp),
@@ -706,6 +733,7 @@ fun MainDisplayArea(
 private fun SplitPanel(
     title: String,
     text: String,
+    showTitle: Boolean,
     modifier: Modifier = Modifier,
     fontSize: Float,
     lineHeight: Float,
@@ -782,12 +810,14 @@ private fun SplitPanel(
         horizontalAlignment = Alignment.Start,
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        Text(
-            text = title,
-            color = Color(0xFF64B5F6),
-            fontSize = GlassesTypographyTokens.MainResponseSplitTitleSp.sp,
-            fontWeight = FontWeight.Bold,
-        )
+        if (showTitle) {
+            Text(
+                text = title,
+                color = Color(0xFF64B5F6),
+                fontSize = GlassesTypographyTokens.MainResponseSplitTitleSp.sp,
+                fontWeight = FontWeight.Bold,
+            )
+        }
         Box(
             modifier = Modifier
                 .fillMaxWidth()

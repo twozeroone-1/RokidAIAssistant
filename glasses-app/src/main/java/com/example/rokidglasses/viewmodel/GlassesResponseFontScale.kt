@@ -7,6 +7,13 @@ internal const val MAX_RESPONSE_FONT_SCALE_PERCENT = 140
 internal const val DEFAULT_RESPONSE_FONT_SCALE_PERCENT = 85
 internal const val RESPONSE_FONT_SCALE_STEP_PERCENT = 5
 
+internal data class DisplayTextRenderState(
+    val text: String,
+    val fontScalePercent: Int,
+    val useResponseFontScale: Boolean,
+    val isPaginated: Boolean,
+)
+
 internal fun clampResponseFontScalePercent(value: Int): Int {
     return value.coerceIn(MIN_RESPONSE_FONT_SCALE_PERCENT, MAX_RESPONSE_FONT_SCALE_PERCENT)
 }
@@ -21,6 +28,24 @@ internal fun snapResponseFontScalePercent(value: Int): Int {
 
 internal fun responseFontScaleMultiplier(value: Int): Float {
     return snapResponseFontScalePercent(value) / 100f
+}
+
+internal fun resolveDisplayTextRenderState(
+    text: String,
+    responseFontScalePercent: Int,
+    useResponseFontScale: Boolean,
+    isPaginated: Boolean,
+): DisplayTextRenderState {
+    return DisplayTextRenderState(
+        text = text,
+        fontScalePercent = if (useResponseFontScale) {
+            snapResponseFontScalePercent(responseFontScalePercent)
+        } else {
+            DEFAULT_RESPONSE_FONT_SCALE_PERCENT
+        },
+        useResponseFontScale = useResponseFontScale,
+        isPaginated = isPaginated,
+    )
 }
 
 internal fun effectiveMaxCharsPerPage(baseMaxCharsPerPage: Int, fontScalePercent: Int): Int {

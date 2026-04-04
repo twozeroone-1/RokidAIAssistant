@@ -7,7 +7,8 @@ internal object PhoneSettingsSyncPolicy {
     fun requiresServiceRefresh(previous: ApiSettings, current: ApiSettings): Boolean {
         return previous.copy(
             responseFontScalePercent = current.responseFontScalePercent,
-            glassesSleepModeEnabled = current.glassesSleepModeEnabled
+            glassesSleepModeEnabled = current.glassesSleepModeEnabled,
+            liveMinimalUiEnabled = current.liveMinimalUiEnabled,
         ) != current
     }
 

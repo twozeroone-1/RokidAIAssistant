@@ -76,6 +76,7 @@ data class GlassesUiState(
     val photoTransferProgress: Float = 0f,
     // Gemini Live mode state
     val liveModeEnabled: Boolean = false,
+    val liveMinimalUiEnabled: Boolean = false,
     val isLiveModeActive: Boolean = false,
     val liveInputSource: LiveControlInputSource = LiveControlInputSource.UNKNOWN,
     val liveTranscription: String = "",
@@ -176,6 +177,15 @@ class GlassesViewModel(
     // Audio buffer - collects recording data
     private val audioBuffer = ByteArrayOutputStream()
     private var liveAudioTrack: AudioTrack? = null
+    private var liveInputAudioRecord: AudioRecord? = null
+    private var liveInputCaptureJob: Job? = null
+    private var liveInputCaptureActive = false
+    private val liveAudioPlaybackQueue = LiveAudioPlaybackQueue(
+        scope = viewModelScope,
+        dispatcher = Dispatchers.IO,
+    ) { audioData ->
+        writeLiveAudioChunk(audioData)
+    }
     
     // ========== Gemini Live Mode Related ==========
     
@@ -260,6 +270,7 @@ class GlassesViewModel(
                 if (clearLiveOutput) {
                     liveCameraMode = LiveCameraStreamingMode.OFF
                     stopVideoStreaming()
+                    stopLiveInputCapture()
                     stopLiveAudioPlayback()
                 }
                 val connectionState = when (state) {
@@ -304,6 +315,8 @@ class GlassesViewModel(
                         )
                     }
                 }
+
+                syncLiveInputCapture(isBluetoothConnected = state == BluetoothClientState.CONNECTED)
             }
         }
         
@@ -350,6 +363,11 @@ class GlassesViewModel(
     }
     
     fun startRecording() {
+        if (liveInputCaptureActive) {
+            Log.d(TAG, "Ignoring legacy recording start while glasses live capture is active")
+            return
+        }
+
         // Check if connected
         if (_uiState.value.bluetoothState != BluetoothClientState.CONNECTED) {
             _uiState.update { it.copy(
@@ -699,9 +717,7 @@ class GlassesViewModel(
 
             MessageType.LIVE_AUDIO_CHUNK -> {
                 message.binaryData?.let { audioData ->
-                    viewModelScope.launch(Dispatchers.IO) {
-                        playLiveAudio(audioData)
-                    }
+                    liveAudioPlaybackQueue.enqueue(audioData)
                 }
             }
 
@@ -751,6 +767,14 @@ class GlassesViewModel(
                 _uiState.update {
                     it.copy(
                         sleepModeEnabled = message.payload?.equals("true", ignoreCase = true) == true
+                    )
+                }
+            }
+
+            MessageType.LIVE_MINIMAL_UI_CONFIG -> {
+                _uiState.update {
+                    it.copy(
+                        liveMinimalUiEnabled = message.payload?.equals("true", ignoreCase = true) == true
                     )
                 }
             }
@@ -821,6 +845,7 @@ class GlassesViewModel(
                     liveCameraMode == LiveCameraStreamingMode.REALTIME) {
                     startVideoStreaming()
                 }
+                syncLiveInputCapture()
             }
             
             MessageType.LIVE_SESSION_END -> {
@@ -856,6 +881,7 @@ class GlassesViewModel(
                         defaultHintText = context.getString(R.string.tap_touchpad_record),
                     )
                 }
+                syncLiveInputCapture()
             }
             
             MessageType.LIVE_TRANSCRIPTION -> {
@@ -1054,7 +1080,7 @@ class GlassesViewModel(
         }
     }
 
-    private fun playLiveAudio(audioData: ByteArray) {
+    private fun writeLiveAudioChunk(audioData: ByteArray) {
         try {
             val track = liveAudioTrack ?: createLiveAudioTrack().also { created ->
                 liveAudioTrack = created
@@ -1097,6 +1123,7 @@ class GlassesViewModel(
     }
 
     private fun stopLiveAudioPlayback() {
+        liveAudioPlaybackQueue.stop()
         try {
             liveAudioTrack?.pause()
             liveAudioTrack?.flush()
@@ -1105,6 +1132,134 @@ class GlassesViewModel(
             Log.w(TAG, "Failed to stop live audio playback", e)
         } finally {
             liveAudioTrack = null
+        }
+    }
+
+    private fun syncLiveInputCapture(
+        isBluetoothConnected: Boolean = _uiState.value.bluetoothState == BluetoothClientState.CONNECTED,
+        liveModeEnabled: Boolean = _uiState.value.liveModeEnabled,
+        sessionActive: Boolean = isLiveModeActive,
+        inputSource: LiveControlInputSource = _uiState.value.liveInputSource,
+    ) {
+        val shouldCapture = shouldCaptureLiveInputFromGlasses(
+            isBluetoothConnected = isBluetoothConnected,
+            liveModeEnabled = liveModeEnabled,
+            sessionActive = sessionActive,
+            inputSource = inputSource,
+        )
+
+        if (shouldCapture) {
+            startLiveInputCapture()
+        } else {
+            stopLiveInputCapture()
+        }
+    }
+
+    private fun startLiveInputCapture() {
+        if (liveInputCaptureActive || liveInputCaptureJob?.isActive == true) {
+            return
+        }
+        if (_uiState.value.isListening) {
+            Log.d(TAG, "Skipping auto live capture because legacy recording is already active")
+            return
+        }
+        if (_uiState.value.bluetoothState != BluetoothClientState.CONNECTED) {
+            return
+        }
+        if (
+            ActivityCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) !=
+            PackageManager.PERMISSION_GRANTED
+        ) {
+            Log.e(TAG, "Cannot start glasses live capture without RECORD_AUDIO permission")
+            return
+        }
+
+        liveInputCaptureActive = true
+        Log.d(TAG, "Starting background live capture from glasses microphone")
+        viewModelScope.launch {
+            bluetoothClient.sendVoiceStart()
+        }
+
+        liveInputCaptureJob = viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val bufferSize = AudioRecord.getMinBufferSize(
+                    Constants.AUDIO_SAMPLE_RATE,
+                    AudioFormat.CHANNEL_IN_MONO,
+                    AudioFormat.ENCODING_PCM_16BIT
+                )
+
+                if (
+                    ActivityCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) !=
+                    PackageManager.PERMISSION_GRANTED
+                ) {
+                    Log.e(TAG, "RECORD_AUDIO permission missing during live capture initialization")
+                    liveInputCaptureActive = false
+                    return@launch
+                }
+
+                val record = AudioRecord(
+                    MediaRecorder.AudioSource.MIC,
+                    Constants.AUDIO_SAMPLE_RATE,
+                    AudioFormat.CHANNEL_IN_MONO,
+                    AudioFormat.ENCODING_PCM_16BIT,
+                    bufferSize
+                )
+                liveInputAudioRecord = record
+
+                if (record.state != AudioRecord.STATE_INITIALIZED) {
+                    Log.e(TAG, "Failed to initialize glasses live AudioRecord")
+                    liveInputCaptureActive = false
+                    releaseLiveInputAudioRecord()
+                    return@launch
+                }
+
+                record.startRecording()
+                val buffer = ByteArray(Constants.AUDIO_BUFFER_SIZE)
+
+                while (isActive && liveInputCaptureActive) {
+                    val readSize = record.read(buffer, 0, buffer.size)
+                    if (readSize > 0) {
+                        bluetoothClient.sendVoiceData(buffer.copyOf(readSize))
+                    }
+                }
+            } catch (e: SecurityException) {
+                liveInputCaptureActive = false
+                Log.e(TAG, "Microphone permission error during glasses live capture", e)
+            } catch (e: Exception) {
+                liveInputCaptureActive = false
+                Log.e(TAG, "Failed during glasses live capture", e)
+            } finally {
+                releaseLiveInputAudioRecord()
+            }
+        }
+    }
+
+    private fun stopLiveInputCapture() {
+        if (!liveInputCaptureActive && liveInputCaptureJob == null && liveInputAudioRecord == null) {
+            return
+        }
+
+        liveInputCaptureActive = false
+        liveInputCaptureJob?.cancel()
+        liveInputCaptureJob = null
+        releaseLiveInputAudioRecord()
+        Log.d(TAG, "Stopped background live capture from glasses microphone")
+    }
+
+    private fun releaseLiveInputAudioRecord() {
+        val record = liveInputAudioRecord ?: return
+        liveInputAudioRecord = null
+        try {
+            if (record.recordingState == AudioRecord.RECORDSTATE_RECORDING) {
+                record.stop()
+            }
+        } catch (e: IllegalStateException) {
+            Log.w(TAG, "Live input AudioRecord stop failed", e)
+        }
+        try {
+            record.release()
+        } catch (e: Exception) {
+            Log.w(TAG, "Live input AudioRecord release failed", e)
         }
     }
 
@@ -1203,16 +1358,18 @@ class GlassesViewModel(
         } else {
             pageText
         }
-        val hintText = when (mode) {
-            ResponseDisplayMode.CHAT -> {
-                if (isPaginated) context.getString(R.string.swipe_for_more)
-                else context.getString(R.string.tap_continue)
-            }
-            ResponseDisplayMode.PHOTO_ANALYSIS -> {
-                if (isPaginated) context.getString(R.string.swipe_left_right_pages)
-                else context.getString(R.string.tap_touchpad_start)
-            }
-        }
+        val hintText = resolveResponseHint(
+            state = _uiState.value,
+            isChatMode = mode == ResponseDisplayMode.CHAT,
+            isPaginated = isPaginated,
+            isLastPage = !isPaginated || targetPage == responsePages.lastIndex,
+            swipeForMoreHint = context.getString(R.string.swipe_for_more),
+            swipePagesHint = context.getString(R.string.swipe_left_right_pages),
+            tapContinueHint = context.getString(R.string.tap_continue),
+            photoSinglePageHint = context.getString(R.string.tap_touchpad_start),
+            liveActiveHint = context.getString(R.string.live_phone_speak_hint),
+            liveResumeHint = context.getString(R.string.live_phone_resume_hint),
+        )
 
         _uiState.update { it.copy(
             isProcessing = false,
@@ -1251,12 +1408,21 @@ class GlassesViewModel(
         val currentState = _uiState.value
         if (currentState.isPaginated && currentState.currentPage < currentState.totalPages - 1) {
             val newPage = currentState.currentPage + 1
-            val isLastPage = newPage == currentState.totalPages - 1
             _uiState.update { it.copy(
                 currentPage = newPage,
                 displayText = responsePages.getOrElse(newPage) { "" },
-                hintText = if (isLastPage) context.getString(R.string.tap_continue) 
-                          else context.getString(R.string.swipe_for_more)
+                hintText = resolveResponseHint(
+                    state = it,
+                    isChatMode = currentResponseDisplayMode == ResponseDisplayMode.CHAT,
+                    isPaginated = true,
+                    isLastPage = newPage == currentState.totalPages - 1,
+                    swipeForMoreHint = context.getString(R.string.swipe_for_more),
+                    swipePagesHint = context.getString(R.string.swipe_left_right_pages),
+                    tapContinueHint = context.getString(R.string.tap_continue),
+                    photoSinglePageHint = context.getString(R.string.tap_touchpad_start),
+                    liveActiveHint = context.getString(R.string.live_phone_speak_hint),
+                    liveResumeHint = context.getString(R.string.live_phone_resume_hint),
+                )
             ) }
         }
     }
@@ -1271,7 +1437,18 @@ class GlassesViewModel(
             _uiState.update { it.copy(
                 currentPage = newPage,
                 displayText = responsePages.getOrElse(newPage) { "" },
-                hintText = context.getString(R.string.swipe_for_more)
+                hintText = resolveResponseHint(
+                    state = it,
+                    isChatMode = currentResponseDisplayMode == ResponseDisplayMode.CHAT,
+                    isPaginated = true,
+                    isLastPage = false,
+                    swipeForMoreHint = context.getString(R.string.swipe_for_more),
+                    swipePagesHint = context.getString(R.string.swipe_left_right_pages),
+                    tapContinueHint = context.getString(R.string.tap_continue),
+                    photoSinglePageHint = context.getString(R.string.tap_touchpad_start),
+                    liveActiveHint = context.getString(R.string.live_phone_speak_hint),
+                    liveResumeHint = context.getString(R.string.live_phone_resume_hint),
+                )
             ) }
         }
     }
@@ -1409,6 +1586,7 @@ class GlassesViewModel(
     override fun onCleared() {
         super.onCleared()
         recordingJob?.cancel()
+        stopLiveInputCapture()
         videoStreamingJob?.cancel()
         audioRecord?.release()
         stopLiveAudioPlayback()

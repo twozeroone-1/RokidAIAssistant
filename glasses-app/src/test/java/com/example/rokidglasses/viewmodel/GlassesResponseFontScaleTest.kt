@@ -58,4 +58,22 @@ class GlassesResponseFontScaleTest {
 
         assertThat(smallerPages.size).isAtMost(defaultPages.size)
     }
+
+    @Test
+    fun `display render state changes when only font scale changes`() {
+        val smaller = resolveDisplayTextRenderState(
+            text = "same text",
+            responseFontScalePercent = 60,
+            useResponseFontScale = true,
+            isPaginated = false,
+        )
+        val larger = resolveDisplayTextRenderState(
+            text = "same text",
+            responseFontScalePercent = 90,
+            useResponseFontScale = true,
+            isPaginated = false,
+        )
+
+        assertThat(smaller == larger).isFalse()
+    }
 }

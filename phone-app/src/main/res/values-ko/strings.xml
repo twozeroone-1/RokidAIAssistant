@@ -238,6 +238,8 @@
     <string name="live_status_route_summary">입력 %1$s · 출력 %2$s</string>
     <string name="live_output_target_off_label">음성 꺼짐</string>
     <string name="live_output_target_disabled_summary">실시간 답변 음성 재생이 꺼져 있어 비활성화됨</string>
+    <string name="live_minimal_ui">Live 화면 단순화</string>
+    <string name="live_minimal_ui_description">실시간 중 안경에 AI 결과 텍스트만 표시합니다. 힌트, 연결 상태, 기기명, 페이지 표시는 숨깁니다.</string>
     <string name="live_input_source_auto_label">자동</string>
     <string name="live_input_source_glasses_label">안경</string>
     <string name="live_input_source_phone_label">휴대폰</string>

@@ -31,6 +31,7 @@ class SettingsRepository(private val context: Context) {
         private const val KEY_LIVE_MODE_ENABLED = "live_mode_enabled"
         private const val KEY_LIVE_RAG_ENABLED = "live_rag_enabled"
         private const val KEY_LIVE_ANSWER_AUDIO_ENABLED = "live_answer_audio_enabled"
+        private const val KEY_LIVE_MINIMAL_UI_ENABLED = "live_minimal_ui_enabled"
         private const val KEY_LIVE_BARGE_IN_ENABLED = "live_barge_in_enabled"
         private const val KEY_LIVE_LONG_SESSION_ENABLED = "live_long_session_enabled"
         private const val KEY_LIVE_GOOGLE_SEARCH_ENABLED = "live_google_search_enabled"
@@ -179,6 +180,7 @@ class SettingsRepository(private val context: Context) {
             liveModeEnabled = prefs.getBoolean(KEY_LIVE_MODE_ENABLED, false),
             liveRagEnabled = prefs.getBoolean(KEY_LIVE_RAG_ENABLED, false),
             liveAnswerAudioEnabled = prefs.getBoolean(KEY_LIVE_ANSWER_AUDIO_ENABLED, true),
+            liveMinimalUiEnabled = prefs.getBoolean(KEY_LIVE_MINIMAL_UI_ENABLED, false),
             liveBargeInEnabled = prefs.getBoolean(KEY_LIVE_BARGE_IN_ENABLED, true),
             liveLongSessionEnabled = prefs.getBoolean(KEY_LIVE_LONG_SESSION_ENABLED, false),
             liveGoogleSearchEnabled = prefs.getBoolean(KEY_LIVE_GOOGLE_SEARCH_ENABLED, false),
@@ -338,6 +340,7 @@ class SettingsRepository(private val context: Context) {
             putBoolean(KEY_LIVE_MODE_ENABLED, normalizedSettings.liveModeEnabled)
             putBoolean(KEY_LIVE_RAG_ENABLED, normalizedSettings.liveRagEnabled)
             putBoolean(KEY_LIVE_ANSWER_AUDIO_ENABLED, normalizedSettings.liveAnswerAudioEnabled)
+            putBoolean(KEY_LIVE_MINIMAL_UI_ENABLED, normalizedSettings.liveMinimalUiEnabled)
             putBoolean(KEY_LIVE_BARGE_IN_ENABLED, normalizedSettings.liveBargeInEnabled)
             putBoolean(KEY_LIVE_LONG_SESSION_ENABLED, normalizedSettings.liveLongSessionEnabled)
             putBoolean(KEY_LIVE_GOOGLE_SEARCH_ENABLED, normalizedSettings.liveGoogleSearchEnabled)

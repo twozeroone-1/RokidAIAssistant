@@ -28,8 +28,8 @@
     <string name="please_wait">잠시 기다려 주세요</string>
     <string name="tap_touchpad_start">터치패드를 탭하여 대화 시작</string>
     <string name="tap_stop_recording">다시 탭하여 녹음 중지</string>
-    <string name="live_phone_speak_hint">말해주세요</string>
-    <string name="live_phone_resume_hint">탭하여 실시간 다시 시작</string>
+    <string name="live_phone_speak_hint">동작 중</string>
+    <string name="live_phone_resume_hint">대기 중</string>
     <string name="select_paired_device">페어링된 기기 선택</string>
     <string name="sending_audio">휴대폰으로 오디오 전송 중...</string>
     <string name="no_voice_detected">음성이 감지되지 않았습니다</string>

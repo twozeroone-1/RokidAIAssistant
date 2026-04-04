@@ -23,6 +23,14 @@ class PhoneSettingsSyncPolicyTest {
     }
 
     @Test
+    fun `requiresServiceRefresh ignores live minimal ui changes`() {
+        val previous = ApiSettings(liveMinimalUiEnabled = false)
+        val current = previous.copy(liveMinimalUiEnabled = true)
+
+        assertThat(PhoneSettingsSyncPolicy.requiresServiceRefresh(previous, current)).isFalse()
+    }
+
+    @Test
     fun `requiresServiceRefresh returns true for ai provider changes`() {
         val previous = ApiSettings()
         val current = previous.copy(aiModelId = "gemini-3.1-flash-lite-preview")

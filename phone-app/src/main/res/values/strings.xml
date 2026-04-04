@@ -80,6 +80,8 @@
     <string name="live_output_target_both_label">Phone app + glasses</string>
     <string name="live_output_target_off_label">Audio off</string>
     <string name="live_output_target_disabled_summary">Disabled while live answer audio playback is off</string>
+    <string name="live_minimal_ui">Live minimal UI</string>
+    <string name="live_minimal_ui_description">Show only AI result text on glasses during Live. Hints, connection state, device name, and page indicators stay hidden.</string>
     <string name="live_status_capability_summary">Search %1$s · RAG %2$s · Thinking %3$s</string>
     <string name="live_status_auto">Auto</string>
     <string name="live_status_both">Both</string>

@@ -749,6 +749,7 @@ data class ApiSettings(
     val liveModeEnabled: Boolean = false,
     val liveRagEnabled: Boolean = false,
     val liveAnswerAudioEnabled: Boolean = true,
+    val liveMinimalUiEnabled: Boolean = false,
     val liveBargeInEnabled: Boolean = true,
     val liveLongSessionEnabled: Boolean = false,
     val liveGoogleSearchEnabled: Boolean = false,

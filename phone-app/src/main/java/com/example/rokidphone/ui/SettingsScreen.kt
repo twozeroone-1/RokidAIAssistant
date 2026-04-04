@@ -329,6 +329,17 @@ fun SettingsScreen(
 
                         HorizontalDivider()
 
+                        SettingsRowWithSwitch(
+                            title = stringResource(R.string.live_minimal_ui),
+                            subtitle = stringResource(R.string.live_minimal_ui_description),
+                            checked = settings.liveMinimalUiEnabled,
+                            onCheckedChange = { enabled ->
+                                onSettingsChange(settings.copy(liveMinimalUiEnabled = enabled))
+                            }
+                        )
+
+                        HorizontalDivider()
+
                         SettingsRow(
                             title = stringResource(R.string.live_camera_mode),
                             subtitle = liveCameraModeLabel,

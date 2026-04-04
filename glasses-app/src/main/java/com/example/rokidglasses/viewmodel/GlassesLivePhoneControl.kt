@@ -32,3 +32,36 @@ fun resolveIdlePrompt(
         },
     )
 }
+
+fun resolveResponseHint(
+    state: GlassesUiState,
+    isChatMode: Boolean,
+    isPaginated: Boolean,
+    isLastPage: Boolean,
+    swipeForMoreHint: String,
+    swipePagesHint: String,
+    tapContinueHint: String,
+    photoSinglePageHint: String,
+    liveActiveHint: String,
+    liveResumeHint: String,
+): String {
+    if (isChatMode) {
+        if (isPaginated && !isLastPage) {
+            return swipeForMoreHint
+        }
+        if (state.canToggleLiveSession()) {
+            return if (state.isLiveModeActive) {
+                liveActiveHint
+            } else {
+                liveResumeHint
+            }
+        }
+        return tapContinueHint
+    }
+
+    return if (isPaginated) {
+        swipePagesHint
+    } else {
+        photoSinglePageHint
+    }
+}
