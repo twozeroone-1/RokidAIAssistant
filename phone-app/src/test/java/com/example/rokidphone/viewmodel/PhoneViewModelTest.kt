@@ -166,6 +166,16 @@ class PhoneViewModelTest {
     }
 
     @Test
+    fun `default android view model factory can create phone view model`() {
+        val viewModel = ViewModelProvider(
+            viewModelStore,
+            ViewModelProvider.AndroidViewModelFactory.getInstance(application)
+        )[PhoneViewModel::class.java]
+
+        assertThat(viewModel.uiState.value.recordingState).isEqualTo(RecordingState.Idle)
+    }
+
+    @Test
     fun `live assistant transcription replaces last assistant conversation instead of appending`() = runTest {
         withPhoneViewModel { viewModel ->
             ServiceBridge.emitConversation(

@@ -45,6 +45,11 @@ class PhoneViewModel(
     application: Application,
     private val recordingStateOverride: Flow<RecordingState>? = null,
 ) : AndroidViewModel(application) {
+
+    constructor(application: Application) : this(
+        application = application,
+        recordingStateOverride = null,
+    )
     
     private val _uiState = MutableStateFlow(PhoneUiState())
     val uiState: StateFlow<PhoneUiState> = _uiState.asStateFlow()
