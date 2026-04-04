@@ -72,6 +72,8 @@ class MessageTypeTest {
         assertThat(MessageType.LIVE_SESSION_END.code).isEqualTo(0x51)
         assertThat(MessageType.LIVE_TRANSCRIPTION.code).isEqualTo(0x52)
         assertThat(MessageType.VIDEO_FRAME.code).isEqualTo(0x53)
+        assertThat(MessageType.LIVE_AUDIO_CHUNK.code).isEqualTo(0x54)
+        assertThat(MessageType.LIVE_AUDIO_STOP.code).isEqualTo(0x55)
     }
 
     @Test
@@ -101,8 +103,8 @@ class MessageTypeTest {
     @Test
     fun `total enum count matches expected`() {
         // Test: total number of MessageType entries
-        // Connection(5) + Voice(6) + AI(5) + Display(5) + Photo(8) + Live(4) + System(3) = 36
-        assertThat(MessageType.entries.size).isEqualTo(36)
+        // Connection(5) + Voice(6) + AI(5) + Display(5) + Photo(8) + Live(6) + System(3) = 38
+        assertThat(MessageType.entries.size).isEqualTo(38)
     }
 
     // ==================== fromCode() ====================
@@ -116,6 +118,8 @@ class MessageTypeTest {
         assertThat(MessageType.fromCode(0x34)).isEqualTo(MessageType.RESPONSE_FONT_SCALE_CONFIG)
         assertThat(MessageType.fromCode(0x41)).isEqualTo(MessageType.PHOTO_DATA)
         assertThat(MessageType.fromCode(0x50)).isEqualTo(MessageType.LIVE_SESSION_START)
+        assertThat(MessageType.fromCode(0x54)).isEqualTo(MessageType.LIVE_AUDIO_CHUNK)
+        assertThat(MessageType.fromCode(0x55)).isEqualTo(MessageType.LIVE_AUDIO_STOP)
         assertThat(MessageType.fromCode(0xFF)).isEqualTo(MessageType.SYSTEM_ERROR)
     }
 

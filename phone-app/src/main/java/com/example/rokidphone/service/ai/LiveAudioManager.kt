@@ -102,6 +102,7 @@ class LiveAudioManager(
 
     private val isRecording = AtomicBoolean(false)
     private val isPlaying = AtomicBoolean(false)
+    private var pauseRecordingDuringPlayback = true
 
     // ========== Playback Queue ==========
 
@@ -124,6 +125,10 @@ class LiveAudioManager(
      * Error callback
      */
     var onError: ((String) -> Unit)? = null
+
+    fun setPauseRecordingDuringPlayback(enabled: Boolean) {
+        pauseRecordingDuringPlayback = enabled
+    }
 
     // ========== Initialization ==========
 
@@ -392,8 +397,10 @@ class LiveAudioManager(
             _isModelSpeaking.value = true
             updateState()
 
-            // Pause recording (echo cancellation)
-            pauseRecording()
+            // For barge-in, keep recording alive while the assistant is speaking.
+            if (pauseRecordingDuringPlayback) {
+                pauseRecording()
+            }
 
             // Start playback loop
             startPlaybackLoop()
@@ -438,8 +445,9 @@ class LiveAudioManager(
         releaseAudioTrack()
         updateState()
 
-        // Resume recording
-        resumeRecording()
+        if (pauseRecordingDuringPlayback) {
+            resumeRecording()
+        }
     }
 
     /**

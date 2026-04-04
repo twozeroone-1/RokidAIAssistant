@@ -2,6 +2,7 @@ package com.example.rokidphone.service
 
 import android.util.Log
 import com.example.rokidcommon.protocol.Message
+import com.example.rokidphone.service.ai.LiveSessionStatusSnapshot
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -136,6 +137,12 @@ object ServiceBridge {
     // Latest received photo path for UI display
     private val _latestPhotoPathFlow = MutableSharedFlow<String>(replay = 1)
     val latestPhotoPathFlow: SharedFlow<String> = _latestPhotoPathFlow.asSharedFlow()
+
+    private val _liveUsageSummaryFlow = MutableStateFlow<String?>(null)
+    val liveUsageSummaryFlow: StateFlow<String?> = _liveUsageSummaryFlow.asStateFlow()
+
+    private val _liveSessionStatusFlow = MutableStateFlow<LiveSessionStatusSnapshot?>(null)
+    val liveSessionStatusFlow: StateFlow<LiveSessionStatusSnapshot?> = _liveSessionStatusFlow.asStateFlow()
     
     /**
      * Emit latest photo path (called by Service after saving photo)
@@ -143,6 +150,14 @@ object ServiceBridge {
     suspend fun emitLatestPhotoPath(path: String) {
         Log.d(TAG, "Emitting latest photo path: $path")
         _latestPhotoPathFlow.emit(path)
+    }
+
+    fun updateLiveUsageSummary(summary: String?) {
+        _liveUsageSummaryFlow.value = summary
+    }
+
+    fun updateLiveSessionStatus(status: LiveSessionStatusSnapshot?) {
+        _liveSessionStatusFlow.value = status
     }
     
     // Connection control requests from UI

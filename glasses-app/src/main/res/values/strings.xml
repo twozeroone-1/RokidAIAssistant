@@ -37,6 +37,9 @@
     <string name="reconnect_try_again">Reconnect and try again</string>
     <string name="waiting_phone">Waiting for phone processing...</string>
     <string name="ai_thinking">AI is thinking</string>
+    <string name="live_thinking_summary_format">Thinking: %1$s</string>
+    <string name="live_split_panel_live">Live</string>
+    <string name="live_split_panel_rag">RAG</string>
     <string name="mic_permission_required">Microphone permission required</string>
     <string name="tap_continue">Tap touchpad to continue conversation</string>
     <string name="you_said">You said: %s\n\nAI is thinking...</string>

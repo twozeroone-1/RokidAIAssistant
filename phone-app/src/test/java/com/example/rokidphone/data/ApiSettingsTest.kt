@@ -1,5 +1,6 @@
 package com.example.rokidphone.data
 
+import com.example.rokidcommon.protocol.LiveRagDisplayMode
 import com.example.rokidphone.service.stt.SttProvider
 import com.google.common.truth.Truth.assertThat
 import org.junit.Test
@@ -7,10 +8,10 @@ import org.junit.Test
 class ApiSettingsTest {
 
     @Test
-    fun `responseFontScalePercent defaults to 100`() {
+    fun `responseFontScalePercent defaults to 85`() {
         val settings = ApiSettings()
 
-        assertThat(settings.responseFontScalePercent).isEqualTo(100)
+        assertThat(settings.responseFontScalePercent).isEqualTo(85)
     }
 
     @Test
@@ -18,6 +19,32 @@ class ApiSettingsTest {
         val settings = ApiSettings()
 
         assertThat(settings.alwaysStartNewAiSession).isFalse()
+    }
+
+    @Test
+    fun `live mode defaults keep general mode active`() {
+        val settings = ApiSettings()
+
+        assertThat(settings.liveModeEnabled).isFalse()
+        assertThat(settings.liveRagEnabled).isFalse()
+        assertThat(settings.liveBargeInEnabled).isTrue()
+        assertThat(settings.liveLongSessionEnabled).isFalse()
+        assertThat(settings.liveGoogleSearchEnabled).isFalse()
+        assertThat(settings.liveVoiceName).isEqualTo(GeminiLiveVoice.AOEDE.voiceName)
+        assertThat(settings.liveThinkingLevel).isEqualTo(LiveThinkingLevel.DEFAULT)
+        assertThat(settings.liveThoughtSummariesEnabled).isFalse()
+        assertThat(settings.liveRagDisplayMode).isEqualTo(LiveRagDisplayMode.RAG_RESULT_ONLY)
+        assertThat(settings.liveInputSource).isEqualTo(LiveInputSource.AUTO)
+        assertThat(settings.liveOutputTarget).isEqualTo(LiveOutputTarget.AUTO)
+        assertThat(settings.liveCameraMode).isEqualTo(LiveCameraMode.OFF)
+        assertThat(settings.liveCameraIntervalSec).isEqualTo(5)
+    }
+
+    @Test
+    fun `live voice getter resolves configured voice option`() {
+        val settings = ApiSettings(liveVoiceName = GeminiLiveVoice.KORE.voiceName)
+
+        assertThat(settings.getLiveVoice()).isEqualTo(GeminiLiveVoice.KORE)
     }
 
     @Test
@@ -82,6 +109,68 @@ class ApiSettingsTest {
         )
 
         assertThat(settings.getCurrentApiKey()).isEqualTo("gemini-live-key")
+    }
+
+    @Test
+    fun `live mode validation requires gemini key regardless of general provider`() {
+        val missingKey = ApiSettings(
+            liveModeEnabled = true,
+            aiProvider = AiProvider.OPENAI,
+            openaiApiKey = "openai-key"
+        )
+        val valid = missingKey.copy(geminiApiKey = "gemini-key")
+
+        assertThat(missingKey.validateForChat())
+            .isEqualTo(SettingsValidationResult.MissingApiKey(AiProvider.GEMINI_LIVE))
+        assertThat(valid.validateForChat()).isEqualTo(SettingsValidationResult.Valid)
+    }
+
+    @Test
+    fun `live mode missing keys points to gemini live and ignores docs mode`() {
+        val liveMissing = ApiSettings(
+            liveModeEnabled = true,
+            aiProvider = AiProvider.OPENAI,
+            answerMode = AnswerMode.GENERAL_AI,
+            openaiApiKey = "openai-key"
+        )
+        val liveDocs = liveMissing.copy(answerMode = AnswerMode.DOCS)
+
+        assertThat(liveMissing.getMissingApiKeys()).containsExactly(AiProvider.GEMINI_LIVE)
+        assertThat(liveDocs.getMissingApiKeys()).containsExactly(AiProvider.GEMINI_LIVE)
+    }
+
+    @Test
+    fun `live mode exposes gemini live as effective assistant provider`() {
+        val settings = ApiSettings(
+            liveModeEnabled = true,
+            aiProvider = AiProvider.OPENAI,
+            openaiApiKey = "openai-key",
+            geminiApiKey = "gemini-key"
+        )
+
+        assertThat(settings.getEffectiveAssistantProvider()).isEqualTo(AiProvider.GEMINI_LIVE)
+    }
+
+    @Test
+    fun `live mode resolves effective assistant model to canonical live model`() {
+        val settings = ApiSettings(
+            liveModeEnabled = true,
+            aiModelId = "gemini-2.5-flash-lite"
+        )
+
+        assertThat(settings.getEffectiveAssistantModelId()).isEqualTo(GEMINI_LIVE_MODEL_ID)
+    }
+
+    @Test
+    fun `general mode keeps selected provider and model as effective assistant`() {
+        val settings = ApiSettings(
+            liveModeEnabled = false,
+            aiProvider = AiProvider.OPENAI,
+            aiModelId = "gpt-5.1-mini"
+        )
+
+        assertThat(settings.getEffectiveAssistantProvider()).isEqualTo(AiProvider.OPENAI)
+        assertThat(settings.getEffectiveAssistantModelId()).isEqualTo("gpt-5.1-mini")
     }
 
     @Test

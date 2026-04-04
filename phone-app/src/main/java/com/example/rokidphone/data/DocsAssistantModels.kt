@@ -11,6 +11,34 @@ enum class NetworkProfile {
     AUTO
 }
 
+enum class LiveInputSource {
+    AUTO,
+    GLASSES,
+    PHONE
+}
+
+enum class LiveOutputTarget {
+    AUTO,
+    GLASSES,
+    PHONE,
+    BOTH
+}
+
+enum class LiveCameraMode {
+    OFF,
+    MANUAL,
+    INTERVAL,
+    REALTIME
+}
+
+enum class LiveThinkingLevel(val wireValue: String?) {
+    DEFAULT(null),
+    MINIMAL("minimal"),
+    LOW("low"),
+    MEDIUM("medium"),
+    HIGH("high")
+}
+
 enum class DocsProvider {
     ANYTHING_LLM
 }

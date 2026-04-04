@@ -419,6 +419,7 @@ class BluetoothSppManager(
                             }
                             MessageType.VOICE_DATA -> {
                                 message.binaryData?.let { audioBuffer.add(it) }
+                                _messageFlow.emit(message)
                             }
                             MessageType.VOICE_END -> {
                                 // Check if VOICE_END message contains audio data directly

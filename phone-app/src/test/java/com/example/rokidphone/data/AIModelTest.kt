@@ -16,7 +16,7 @@ class AIModelTest {
 
         assertThat(geminiIds).contains("gemini-3.1-flash-lite-preview")
         assertThat(geminiIds).contains("gemini-3-flash-preview")
-        assertThat(liveIds).contains("gemini-2.5-flash-native-audio-preview-09-2025")
+        assertThat(liveIds).contains("gemini-3.1-flash-live-preview")
     }
 
     // ==================== Gemini Model ID Tests ====================

@@ -7,6 +7,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -25,6 +26,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import com.example.rokidcommon.protocol.LiveRagDisplayMode
 import com.example.rokidphone.R
 import com.example.rokidphone.data.*
 import com.example.rokidphone.service.ai.AiServiceFactory
@@ -53,7 +55,62 @@ fun SettingsScreen(
     var showSystemPromptDialog by remember { mutableStateOf(false) }
     var showLanguageDialog by remember { mutableStateOf(false) }
     var showCustomModelDialog by remember { mutableStateOf(false) }
+    var showLiveInputDialog by remember { mutableStateOf(false) }
+    var showLiveOutputDialog by remember { mutableStateOf(false) }
+    var showLiveCameraModeDialog by remember { mutableStateOf(false) }
+    var showLiveCameraIntervalDialog by remember { mutableStateOf(false) }
+    var showLiveVoiceDialog by remember { mutableStateOf(false) }
+    var showLiveThinkingDialog by remember { mutableStateOf(false) }
     var currentLanguage by remember { mutableStateOf(LanguageManager.getCurrentLanguage(context)) }
+
+    val liveInputLabel = remember(settings.liveInputSource) {
+        when (settings.liveInputSource) {
+            LiveInputSource.AUTO -> "Auto"
+            LiveInputSource.GLASSES -> "Glasses"
+            LiveInputSource.PHONE -> "Phone"
+        }
+    }
+    val liveOutputLabel = remember(settings.liveOutputTarget) {
+        when (settings.liveOutputTarget) {
+            LiveOutputTarget.AUTO -> "Auto"
+            LiveOutputTarget.GLASSES -> "Glasses"
+            LiveOutputTarget.PHONE -> "Phone"
+            LiveOutputTarget.BOTH -> "Both"
+        }
+    }
+    val liveCameraModeLabel = remember(settings.liveCameraMode) {
+        when (settings.liveCameraMode) {
+            LiveCameraMode.OFF -> "Off"
+            LiveCameraMode.MANUAL -> "Manual capture"
+            LiveCameraMode.INTERVAL -> "Interval"
+            LiveCameraMode.REALTIME -> "Realtime"
+        }
+    }
+    val liveThinkingLabel = remember(settings.liveThinkingLevel, context) {
+        when (settings.liveThinkingLevel) {
+            LiveThinkingLevel.DEFAULT -> context.getString(R.string.live_thinking_default)
+            LiveThinkingLevel.MINIMAL -> context.getString(R.string.live_thinking_minimal)
+            LiveThinkingLevel.LOW -> context.getString(R.string.live_thinking_low)
+            LiveThinkingLevel.MEDIUM -> context.getString(R.string.live_thinking_medium)
+            LiveThinkingLevel.HIGH -> context.getString(R.string.live_thinking_high)
+        }
+    }
+    val liveVoiceLabel = remember(settings.liveVoiceName) {
+        settings.getLiveVoice().displayLabel
+    }
+    val currentModel = remember(settings.aiProvider, settings.aiModelId, settings.customModelName) {
+        AvailableModels.findModel(settings.aiModelId)
+    }
+    val currentModelLabel = remember(currentModel, settings.aiProvider, settings.customModelName, settings.aiModelId) {
+        if (settings.aiProvider == AiProvider.CUSTOM) {
+            settings.customModelName.ifBlank { "custom" }
+        } else {
+            currentModel?.displayName ?: settings.aiModelId
+        }
+    }
+    val aiServicePresentation = remember(settings.liveModeEnabled, currentModelLabel) {
+        resolveAiServicePresentation(settings, currentModelLabel)
+    }
     
     Scaffold(
         topBar = {
@@ -91,25 +148,162 @@ fun SettingsScreen(
             // AI service settings section
             item {
                 SettingsSection(title = stringResource(R.string.ai_service)) {
-                    // AI provider selection
-                    SettingsRow(
-                        title = stringResource(R.string.ai_provider),
-                        subtitle = stringResource(settings.aiProvider.displayNameResId),
-                        onClick = { showProviderDialog = true }
+                    SettingsRowWithSwitch(
+                        title = stringResource(R.string.realtime_conversation),
+                        subtitle = stringResource(R.string.realtime_conversation_description),
+                        checked = settings.liveModeEnabled,
+                        onCheckedChange = { enabled ->
+                            onSettingsChange(settings.copy(liveModeEnabled = enabled))
+                        }
                     )
-                    
+
                     HorizontalDivider()
-                    
-                    // Model selection
-                    val currentModel = AvailableModels.findModel(settings.aiModelId)
-                    SettingsRow(
-                        title = stringResource(R.string.ai_model),
-                        subtitle = if (settings.aiProvider == AiProvider.CUSTOM) 
-                            settings.customModelName.ifBlank { "custom" }
-                        else 
-                            currentModel?.displayName ?: settings.aiModelId,
-                        onClick = { showModelDialog = true }
-                    )
+
+                    if (aiServicePresentation.showLiveLockCard) {
+                        LiveModeLockCard()
+                    } else {
+                        SettingsRow(
+                            title = stringResource(R.string.ai_provider),
+                            subtitle = stringResource(settings.aiProvider.displayNameResId),
+                            onClick = { showProviderDialog = true }
+                        )
+
+                        HorizontalDivider()
+
+                        SettingsRow(
+                            title = stringResource(R.string.ai_model),
+                            subtitle = currentModelLabel,
+                            onClick = { showModelDialog = true }
+                        )
+                    }
+                }
+            }
+
+            if (settings.liveModeEnabled) {
+                item {
+                    SettingsSection(title = stringResource(R.string.realtime_conversation)) {
+                        SettingsRowWithSwitch(
+                            title = stringResource(R.string.live_rag),
+                            subtitle = stringResource(R.string.live_rag_description),
+                            checked = settings.liveRagEnabled,
+                            onCheckedChange = { enabled ->
+                                onSettingsChange(settings.copy(liveRagEnabled = enabled))
+                            }
+                        )
+
+                        if (settings.liveRagEnabled) {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            LiveRagDisplayModeSelector(
+                                selectedMode = settings.liveRagDisplayMode,
+                                onModeSelected = { mode ->
+                                    onSettingsChange(settings.copy(liveRagDisplayMode = mode))
+                                }
+                            )
+                        }
+
+                        HorizontalDivider()
+
+                        SettingsRowWithSwitch(
+                            title = stringResource(R.string.live_barge_in),
+                            subtitle = stringResource(R.string.live_barge_in_description),
+                            checked = settings.liveBargeInEnabled,
+                            onCheckedChange = { enabled ->
+                                onSettingsChange(settings.copy(liveBargeInEnabled = enabled))
+                            }
+                        )
+
+                        HorizontalDivider()
+
+                        SettingsRow(
+                            title = stringResource(R.string.live_voice),
+                            subtitle = liveVoiceLabel,
+                            onClick = { showLiveVoiceDialog = true }
+                        )
+
+                        HorizontalDivider()
+
+                        SettingsRow(
+                            title = stringResource(R.string.live_thinking_level),
+                            subtitle = liveThinkingLabel,
+                            onClick = { showLiveThinkingDialog = true }
+                        )
+
+                        HorizontalDivider()
+
+                        SettingsRowWithSwitch(
+                            title = stringResource(R.string.live_thought_summaries),
+                            subtitle = stringResource(R.string.live_thought_summaries_description),
+                            checked = settings.liveThoughtSummariesEnabled,
+                            onCheckedChange = { enabled ->
+                                onSettingsChange(settings.copy(liveThoughtSummariesEnabled = enabled))
+                            }
+                        )
+
+                        HorizontalDivider()
+
+                        SettingsRowWithSwitch(
+                            title = stringResource(R.string.live_long_session),
+                            subtitle = stringResource(R.string.live_long_session_description),
+                            checked = settings.liveLongSessionEnabled,
+                            onCheckedChange = { enabled ->
+                                onSettingsChange(settings.copy(liveLongSessionEnabled = enabled))
+                            }
+                        )
+
+                        HorizontalDivider()
+
+                        SettingsRowWithSwitch(
+                            title = stringResource(R.string.live_google_search),
+                            subtitle = stringResource(R.string.live_google_search_description),
+                            checked = settings.liveGoogleSearchEnabled,
+                            onCheckedChange = { enabled ->
+                                onSettingsChange(settings.copy(liveGoogleSearchEnabled = enabled))
+                            }
+                        )
+
+                        HorizontalDivider()
+
+                        SettingsRow(
+                            title = stringResource(R.string.live_input_source),
+                            subtitle = liveInputLabel,
+                            onClick = { showLiveInputDialog = true }
+                        )
+
+                        HorizontalDivider()
+
+                        SettingsRow(
+                            title = stringResource(R.string.live_output_target),
+                            subtitle = liveOutputLabel,
+                            onClick = { showLiveOutputDialog = true }
+                        )
+
+                        HorizontalDivider()
+
+                        SettingsRow(
+                            title = stringResource(R.string.live_camera_mode),
+                            subtitle = liveCameraModeLabel,
+                            onClick = { showLiveCameraModeDialog = true }
+                        )
+
+                        if (settings.liveCameraMode == LiveCameraMode.INTERVAL) {
+                            HorizontalDivider()
+
+                            SettingsRow(
+                                title = stringResource(R.string.live_camera_interval),
+                                subtitle = "${settings.liveCameraIntervalSec}s",
+                                onClick = { showLiveCameraIntervalDialog = true }
+                            )
+                        }
+
+                        if (settings.liveCameraMode == LiveCameraMode.REALTIME) {
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Text(
+                                text = stringResource(R.string.live_camera_realtime_warning),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.error
+                            )
+                        }
+                    }
                 }
             }
 
@@ -128,7 +322,7 @@ fun SettingsScreen(
             }
             
             // Custom Provider Settings (only shown for CUSTOM provider)
-            if (settings.aiProvider == AiProvider.CUSTOM) {
+            if (!settings.liveModeEnabled && settings.aiProvider == AiProvider.CUSTOM) {
                 item {
                     CustomProviderSection(
                         baseUrl = settings.customBaseUrl,
@@ -143,10 +337,10 @@ fun SettingsScreen(
             }
             
             // API Key settings section (for non-custom providers)
-            if (settings.aiProvider != AiProvider.CUSTOM) {
+            if (settings.liveModeEnabled || settings.aiProvider != AiProvider.CUSTOM) {
                 item {
                                 SettingsSection(title = stringResource(R.string.api_keys)) {
-                        when (settings.aiProvider) {
+                        when (if (settings.liveModeEnabled) AiProvider.GEMINI_LIVE else settings.aiProvider) {
                             AiProvider.GEMINI -> {
                                 ApiKeyField(
                                     label = stringResource(R.string.gemini_api_key),
@@ -382,6 +576,8 @@ fun SettingsScreen(
                 val isValid = settings.isValid()
                 val statusText = when {
                     isValid -> stringResource(R.string.settings_complete)
+                    settings.liveModeEnabled ->
+                        stringResource(R.string.please_enter_api_key, stringResource(R.string.provider_gemini_live))
                     settings.aiProvider == AiProvider.CUSTOM && settings.customBaseUrl.isBlank() -> 
                         stringResource(R.string.invalid_url)
                     settings.aiProvider == AiProvider.CUSTOM -> 
@@ -537,6 +733,92 @@ fun SettingsScreen(
             onDismiss = { showLanguageDialog = false }
         )
     }
+
+    if (showLiveInputDialog) {
+        SimpleSelectionDialog(
+            title = stringResource(R.string.live_input_source),
+            options = listOf(
+                "Auto" to { onSettingsChange(settings.copy(liveInputSource = LiveInputSource.AUTO)) },
+                "Glasses" to { onSettingsChange(settings.copy(liveInputSource = LiveInputSource.GLASSES)) },
+                "Phone" to { onSettingsChange(settings.copy(liveInputSource = LiveInputSource.PHONE)) },
+            ),
+            onDismiss = { showLiveInputDialog = false }
+        )
+    }
+
+    if (showLiveThinkingDialog) {
+        SimpleSelectionDialog(
+            title = stringResource(R.string.live_thinking_level),
+            options = listOf(
+                stringResource(R.string.live_thinking_default) to {
+                    onSettingsChange(settings.copy(liveThinkingLevel = LiveThinkingLevel.DEFAULT))
+                },
+                stringResource(R.string.live_thinking_minimal) to {
+                    onSettingsChange(settings.copy(liveThinkingLevel = LiveThinkingLevel.MINIMAL))
+                },
+                stringResource(R.string.live_thinking_low) to {
+                    onSettingsChange(settings.copy(liveThinkingLevel = LiveThinkingLevel.LOW))
+                },
+                stringResource(R.string.live_thinking_medium) to {
+                    onSettingsChange(settings.copy(liveThinkingLevel = LiveThinkingLevel.MEDIUM))
+                },
+                stringResource(R.string.live_thinking_high) to {
+                    onSettingsChange(settings.copy(liveThinkingLevel = LiveThinkingLevel.HIGH))
+                },
+            ),
+            onDismiss = { showLiveThinkingDialog = false }
+        )
+    }
+
+    if (showLiveVoiceDialog) {
+        SimpleSelectionDialog(
+            title = stringResource(R.string.live_voice),
+            options = GeminiLiveVoice.entries.map { voice ->
+                voice.displayLabel to {
+                    onSettingsChange(settings.copy(liveVoiceName = voice.voiceName))
+                }
+            },
+            onDismiss = { showLiveVoiceDialog = false }
+        )
+    }
+
+    if (showLiveOutputDialog) {
+        SimpleSelectionDialog(
+            title = stringResource(R.string.live_output_target),
+            options = listOf(
+                "Auto" to { onSettingsChange(settings.copy(liveOutputTarget = LiveOutputTarget.AUTO)) },
+                "Glasses" to { onSettingsChange(settings.copy(liveOutputTarget = LiveOutputTarget.GLASSES)) },
+                "Phone" to { onSettingsChange(settings.copy(liveOutputTarget = LiveOutputTarget.PHONE)) },
+                "Both" to { onSettingsChange(settings.copy(liveOutputTarget = LiveOutputTarget.BOTH)) },
+            ),
+            onDismiss = { showLiveOutputDialog = false }
+        )
+    }
+
+    if (showLiveCameraModeDialog) {
+        SimpleSelectionDialog(
+            title = stringResource(R.string.live_camera_mode),
+            options = listOf(
+                "Off" to { onSettingsChange(settings.copy(liveCameraMode = LiveCameraMode.OFF)) },
+                "Manual capture" to { onSettingsChange(settings.copy(liveCameraMode = LiveCameraMode.MANUAL)) },
+                "Interval" to { onSettingsChange(settings.copy(liveCameraMode = LiveCameraMode.INTERVAL)) },
+                "Realtime" to { onSettingsChange(settings.copy(liveCameraMode = LiveCameraMode.REALTIME)) },
+            ),
+            onDismiss = { showLiveCameraModeDialog = false }
+        )
+    }
+
+    if (showLiveCameraIntervalDialog) {
+        SimpleSelectionDialog(
+            title = stringResource(R.string.live_camera_interval),
+            options = listOf(1, 2, 5, 10, 30, 60).map { seconds ->
+                "${seconds}s" to {
+                    onSettingsChange(settings.copy(liveCameraIntervalSec = seconds))
+                }
+            },
+            onDismiss = { showLiveCameraIntervalDialog = false }
+        )
+    }
 }
 
 @Composable
@@ -565,6 +847,43 @@ fun SettingsSection(
             content()
         }
     }
+}
+
+@Composable
+fun SimpleSelectionDialog(
+    title: String,
+    options: List<Pair<String, () -> Unit>>,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = {
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState())
+            ) {
+                options.forEach { (label, action) ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                action()
+                                onDismiss()
+                            }
+                            .padding(vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(label)
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.cancel))
+            }
+        }
+    )
 }
 
 @Composable
@@ -652,6 +971,87 @@ fun SettingsRow(
 }
 
 @Composable
+private fun LiveModeLockCard() {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.secondaryContainer
+        ),
+        shape = MaterialTheme.shapes.medium
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.GraphicEq,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSecondaryContainer
+                )
+                Column {
+                    Text(
+                        text = stringResource(R.string.live_mode_active_title),
+                        style = MaterialTheme.typography.titleSmall,
+                        color = MaterialTheme.colorScheme.onSecondaryContainer
+                    )
+                    Text(
+                        text = stringResource(R.string.live_mode_active_description),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.85f)
+                    )
+                }
+            }
+
+            Surface(
+                shape = MaterialTheme.shapes.small,
+                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.55f)
+            ) {
+                Column(
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    LiveModeInfoRow(
+                        label = stringResource(R.string.live_mode_provider_label),
+                        value = stringResource(R.string.provider_gemini_live)
+                    )
+                    LiveModeInfoRow(
+                        label = stringResource(R.string.live_mode_model_label),
+                        value = stringResource(R.string.live_native_audio_model)
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun LiveModeInfoRow(
+    label: String,
+    value: String,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Text(
+            text = value,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurface,
+        )
+    }
+}
+
+@Composable
 fun SettingsRowWithSwitch(
     title: String,
     subtitle: String,
@@ -682,6 +1082,53 @@ fun SettingsRowWithSwitch(
             checked = checked,
             onCheckedChange = onCheckedChange
         )
+    }
+}
+
+@Composable
+private fun LiveRagDisplayModeSelector(
+    selectedMode: LiveRagDisplayMode,
+    onModeSelected: (LiveRagDisplayMode) -> Unit,
+) {
+    Column(
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+        modifier = Modifier.padding(start = 8.dp)
+    ) {
+        Text(
+            text = stringResource(R.string.live_rag_display_mode),
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+
+        LiveRagDisplayMode.entries.forEach { mode ->
+            val title = when (mode) {
+                LiveRagDisplayMode.RAG_RESULT_ONLY ->
+                    stringResource(R.string.live_rag_display_mode_rag_only)
+                LiveRagDisplayMode.SPLIT_LIVE_AND_RAG ->
+                    stringResource(R.string.live_rag_display_mode_split)
+            }
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .selectable(
+                        selected = selectedMode == mode,
+                        onClick = { onModeSelected(mode) }
+                    )
+                    .padding(vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                RadioButton(
+                    selected = selectedMode == mode,
+                    onClick = { onModeSelected(mode) }
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            }
+        }
     }
 }
 
@@ -799,7 +1246,9 @@ fun ProviderSelectionDialog(
             Column(
                 modifier = Modifier.verticalScroll(rememberScrollState())
             ) {
-                AiProvider.entries.forEach { provider ->
+                AiProvider.entries
+                    .filter { it != AiProvider.GEMINI_LIVE }
+                    .forEach { provider ->
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()

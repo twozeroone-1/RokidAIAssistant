@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.SharedPreferences
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
+import com.example.rokidcommon.protocol.LiveRagDisplayMode
 import com.example.rokidphone.R
 import com.example.rokidphone.service.stt.SttProvider
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -26,6 +27,19 @@ class SettingsRepository(private val context: Context) {
         private const val KEY_ANSWER_MODE = "answer_mode"
         private const val KEY_NETWORK_PROFILE = "network_profile"
         private const val KEY_DOCS_PROVIDER = "docs_provider"
+        private const val KEY_LIVE_MODE_ENABLED = "live_mode_enabled"
+        private const val KEY_LIVE_RAG_ENABLED = "live_rag_enabled"
+        private const val KEY_LIVE_BARGE_IN_ENABLED = "live_barge_in_enabled"
+        private const val KEY_LIVE_LONG_SESSION_ENABLED = "live_long_session_enabled"
+        private const val KEY_LIVE_GOOGLE_SEARCH_ENABLED = "live_google_search_enabled"
+        private const val KEY_LIVE_VOICE_NAME = "live_voice_name"
+        private const val KEY_LIVE_THINKING_LEVEL = "live_thinking_level"
+        private const val KEY_LIVE_THOUGHT_SUMMARIES_ENABLED = "live_thought_summaries_enabled"
+        private const val KEY_LIVE_RAG_DISPLAY_MODE = "live_rag_display_mode"
+        private const val KEY_LIVE_INPUT_SOURCE = "live_input_source"
+        private const val KEY_LIVE_OUTPUT_TARGET = "live_output_target"
+        private const val KEY_LIVE_CAMERA_MODE = "live_camera_mode"
+        private const val KEY_LIVE_CAMERA_INTERVAL_SEC = "live_camera_interval_sec"
         private const val KEY_STT_PROVIDER = "stt_provider"
         private const val KEY_SPEECH_LANGUAGE = "speech_language"
         private const val KEY_RESPONSE_LANGUAGE = "response_language"
@@ -158,6 +172,33 @@ class SettingsRepository(private val context: Context) {
             docsProvider = DocsProvider.valueOf(
                 prefs.getString(KEY_DOCS_PROVIDER, DocsProvider.ANYTHING_LLM.name) ?: DocsProvider.ANYTHING_LLM.name
             ),
+            liveModeEnabled = prefs.getBoolean(KEY_LIVE_MODE_ENABLED, false),
+            liveRagEnabled = prefs.getBoolean(KEY_LIVE_RAG_ENABLED, false),
+            liveBargeInEnabled = prefs.getBoolean(KEY_LIVE_BARGE_IN_ENABLED, true),
+            liveLongSessionEnabled = prefs.getBoolean(KEY_LIVE_LONG_SESSION_ENABLED, false),
+            liveGoogleSearchEnabled = prefs.getBoolean(KEY_LIVE_GOOGLE_SEARCH_ENABLED, false),
+            liveVoiceName = prefs.getString(KEY_LIVE_VOICE_NAME, GeminiLiveVoice.AOEDE.voiceName)
+                ?: GeminiLiveVoice.AOEDE.voiceName,
+            liveThinkingLevel = runCatching {
+                LiveThinkingLevel.valueOf(
+                    prefs.getString(KEY_LIVE_THINKING_LEVEL, LiveThinkingLevel.DEFAULT.name)
+                        ?: LiveThinkingLevel.DEFAULT.name
+                )
+            }.getOrDefault(LiveThinkingLevel.DEFAULT),
+            liveThoughtSummariesEnabled = prefs.getBoolean(KEY_LIVE_THOUGHT_SUMMARIES_ENABLED, false),
+            liveRagDisplayMode = LiveRagDisplayMode.fromRaw(
+                prefs.getString(KEY_LIVE_RAG_DISPLAY_MODE, LiveRagDisplayMode.RAG_RESULT_ONLY.name)
+            ),
+            liveInputSource = LiveInputSource.valueOf(
+                prefs.getString(KEY_LIVE_INPUT_SOURCE, LiveInputSource.AUTO.name) ?: LiveInputSource.AUTO.name
+            ),
+            liveOutputTarget = LiveOutputTarget.valueOf(
+                prefs.getString(KEY_LIVE_OUTPUT_TARGET, LiveOutputTarget.AUTO.name) ?: LiveOutputTarget.AUTO.name
+            ),
+            liveCameraMode = LiveCameraMode.valueOf(
+                prefs.getString(KEY_LIVE_CAMERA_MODE, LiveCameraMode.OFF.name) ?: LiveCameraMode.OFF.name
+            ),
+            liveCameraIntervalSec = prefs.getInt(KEY_LIVE_CAMERA_INTERVAL_SEC, 5),
             geminiApiKey = prefs.getString(KEY_GEMINI_API_KEY, "") ?: "",
             openaiApiKey = prefs.getString(KEY_OPENAI_API_KEY, "") ?: "",
             anthropicApiKey = prefs.getString(KEY_ANTHROPIC_API_KEY, "") ?: "",
@@ -277,6 +318,19 @@ class SettingsRepository(private val context: Context) {
             putString(KEY_ANSWER_MODE, normalizedSettings.answerMode.name)
             putString(KEY_NETWORK_PROFILE, normalizedSettings.networkProfile.name)
             putString(KEY_DOCS_PROVIDER, normalizedSettings.docsProvider.name)
+            putBoolean(KEY_LIVE_MODE_ENABLED, normalizedSettings.liveModeEnabled)
+            putBoolean(KEY_LIVE_RAG_ENABLED, normalizedSettings.liveRagEnabled)
+            putBoolean(KEY_LIVE_BARGE_IN_ENABLED, normalizedSettings.liveBargeInEnabled)
+            putBoolean(KEY_LIVE_LONG_SESSION_ENABLED, normalizedSettings.liveLongSessionEnabled)
+            putBoolean(KEY_LIVE_GOOGLE_SEARCH_ENABLED, normalizedSettings.liveGoogleSearchEnabled)
+            putString(KEY_LIVE_VOICE_NAME, normalizedSettings.liveVoiceName)
+            putString(KEY_LIVE_THINKING_LEVEL, normalizedSettings.liveThinkingLevel.name)
+            putBoolean(KEY_LIVE_THOUGHT_SUMMARIES_ENABLED, normalizedSettings.liveThoughtSummariesEnabled)
+            putString(KEY_LIVE_RAG_DISPLAY_MODE, normalizedSettings.liveRagDisplayMode.name)
+            putString(KEY_LIVE_INPUT_SOURCE, normalizedSettings.liveInputSource.name)
+            putString(KEY_LIVE_OUTPUT_TARGET, normalizedSettings.liveOutputTarget.name)
+            putString(KEY_LIVE_CAMERA_MODE, normalizedSettings.liveCameraMode.name)
+            putInt(KEY_LIVE_CAMERA_INTERVAL_SEC, normalizedSettings.liveCameraIntervalSec)
             putString(KEY_GEMINI_API_KEY, normalizedSettings.geminiApiKey)
             putString(KEY_OPENAI_API_KEY, normalizedSettings.openaiApiKey)
             putString(KEY_ANTHROPIC_API_KEY, normalizedSettings.anthropicApiKey)

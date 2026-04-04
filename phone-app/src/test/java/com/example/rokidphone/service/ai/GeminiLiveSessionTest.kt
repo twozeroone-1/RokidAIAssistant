@@ -2,6 +2,7 @@ package com.example.rokidphone.service.ai
 
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
+import com.example.rokidphone.data.GeminiLiveVoice
 import com.google.common.truth.Truth.assertThat
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import org.json.JSONObject
@@ -28,7 +29,12 @@ class GeminiLiveSessionTest {
             context = context,
             apiKey = "test-key",
             modelId = "test-model",
-            systemPrompt = "Be helpful"
+            systemPrompt = "Be helpful",
+            liveVoiceName = GeminiLiveVoice.AOEDE.voiceName,
+            capturePhoneAudio = true,
+            playbackPhoneAudio = true,
+            extraToolDeclarations = emptyList(),
+            routerConfigurator = {}
         )
     }
 
@@ -83,6 +89,19 @@ class GeminiLiveSessionTest {
             .isEqualTo(GeminiLiveSession.SessionState.IDLE)
     }
 
+    @Test
+    fun `sendAudioChunk when not ACTIVE is silently ignored`() {
+        session.sendAudioChunk(byteArrayOf(1, 2, 3))
+
+        assertThat(session.sessionState.value)
+            .isEqualTo(GeminiLiveSession.SessionState.IDLE)
+    }
+
+    @Test
+    fun `outputAudio flow is available for external playback routing`() {
+        assertThat(session.outputAudio).isNotNull()
+    }
+
     // ==================== getDefaultToolDeclarations ====================
 
     @Test
@@ -111,6 +130,28 @@ class GeminiLiveSessionTest {
         assertThat(vadConfig.silenceDurationMs).isEqualTo(500)
         assertThat(vadConfig.activityHandling)
             .isEqualTo(GeminiLiveService.ActivityHandling.START_OF_ACTIVITY_INTERRUPTS)
+    }
+
+    @Test
+    fun `barge in activity handling keeps recording active during playback`() {
+        val pauseDuringPlayback = session.shouldPauseRecordingDuringPlayback(
+            GeminiLiveSession.VadConfig(
+                activityHandling = GeminiLiveService.ActivityHandling.START_OF_ACTIVITY_INTERRUPTS
+            )
+        )
+
+        assertThat(pauseDuringPlayback).isFalse()
+    }
+
+    @Test
+    fun `no interruption activity handling pauses recording during playback`() {
+        val pauseDuringPlayback = session.shouldPauseRecordingDuringPlayback(
+            GeminiLiveSession.VadConfig(
+                activityHandling = GeminiLiveService.ActivityHandling.NO_INTERRUPTION
+            )
+        )
+
+        assertThat(pauseDuringPlayback).isTrue()
     }
 
     // ==================== getToolCallRouter before start ====================

@@ -6,6 +6,7 @@ import com.example.rokidcommon.protocol.MessageType
 import com.google.common.truth.Truth.assertThat
 import io.mockk.*
 import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.*
 import org.junit.After
 import org.junit.Before
@@ -153,6 +154,19 @@ class BluetoothSppManagerTest {
         val result = manager.sendMessage(message)
 
         assertThat(result).isFalse()
+    }
+
+    @Test
+    fun `processReceivedData emits VOICE_DATA chunks for live streaming`() = scope.runTest {
+        val expectedChunk = byteArrayOf(10, 20, 30, 40)
+        val waiter = async {
+            manager.messageFlow.first { it.type == MessageType.VOICE_DATA }
+        }
+
+        invokeProcessReceivedData(Message.voiceData(expectedChunk).toJson().plus("\n").toByteArray())
+        val message = waiter.await()
+
+        assertThat(message.binaryData?.contentEquals(expectedChunk)).isTrue()
     }
 
     // ==================== handleDisconnection ====================
@@ -334,5 +348,18 @@ class BluetoothSppManagerTest {
         val field = BluetoothSppManager::class.java.getDeclaredField("outputStream")
         field.isAccessible = true
         field.set(manager, outputStream)
+    }
+
+    private suspend fun invokeProcessReceivedData(data: ByteArray) {
+        val method = BluetoothSppManager::class.java.getDeclaredMethod(
+            "processReceivedData",
+            ByteArray::class.java,
+            StringBuilder::class.java,
+            kotlin.coroutines.Continuation::class.java
+        )
+        method.isAccessible = true
+        kotlin.coroutines.intrinsics.suspendCoroutineUninterceptedOrReturn<Unit> { cont ->
+            method.invoke(manager, data, StringBuilder(), cont)
+        }
     }
 }

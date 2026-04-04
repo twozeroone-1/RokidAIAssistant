@@ -2,6 +2,7 @@ package com.example.rokidphone.data
 
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
+import com.example.rokidcommon.protocol.LiveRagDisplayMode
 import com.google.common.truth.Truth.assertThat
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -9,6 +10,17 @@ import org.robolectric.RobolectricTestRunner
 
 @RunWith(RobolectricTestRunner::class)
 class SettingsRepositoryTest {
+
+    @Test
+    fun `getSettings uses updated default glasses response font scale when unset`() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        context.deleteSharedPreferences("rokid_api_settings")
+
+        val repository = SettingsRepository(context)
+
+        assertThat(repository.getSettings().responseFontScalePercent)
+            .isEqualTo(ApiSettings.DEFAULT_RESPONSE_FONT_SCALE_PERCENT)
+    }
 
     @Test
     fun `saveSettings persists glasses response font scale percent`() {
@@ -115,5 +127,45 @@ class SettingsRepositoryTest {
         val reloadedRepository = SettingsRepository(context)
 
         assertThat(reloadedRepository.getSettings().alwaysStartNewAiSession).isTrue()
+    }
+
+    @Test
+    fun `saveSettings persists live mode configuration`() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val repository = SettingsRepository(context)
+
+        repository.saveSettings(
+            ApiSettings(
+                liveModeEnabled = true,
+                liveRagEnabled = true,
+                liveBargeInEnabled = false,
+                liveLongSessionEnabled = true,
+                liveGoogleSearchEnabled = true,
+                liveVoiceName = GeminiLiveVoice.KORE.voiceName,
+                liveThinkingLevel = LiveThinkingLevel.MEDIUM,
+                liveThoughtSummariesEnabled = true,
+                liveRagDisplayMode = LiveRagDisplayMode.SPLIT_LIVE_AND_RAG,
+                liveInputSource = LiveInputSource.GLASSES,
+                liveOutputTarget = LiveOutputTarget.BOTH,
+                liveCameraMode = LiveCameraMode.INTERVAL,
+                liveCameraIntervalSec = 10
+            )
+        )
+
+        val reloadedSettings = SettingsRepository(context).getSettings()
+
+        assertThat(reloadedSettings.liveModeEnabled).isTrue()
+        assertThat(reloadedSettings.liveRagEnabled).isTrue()
+        assertThat(reloadedSettings.liveBargeInEnabled).isFalse()
+        assertThat(reloadedSettings.liveLongSessionEnabled).isTrue()
+        assertThat(reloadedSettings.liveGoogleSearchEnabled).isTrue()
+        assertThat(reloadedSettings.liveVoiceName).isEqualTo(GeminiLiveVoice.KORE.voiceName)
+        assertThat(reloadedSettings.liveThinkingLevel).isEqualTo(LiveThinkingLevel.MEDIUM)
+        assertThat(reloadedSettings.liveThoughtSummariesEnabled).isTrue()
+        assertThat(reloadedSettings.liveRagDisplayMode).isEqualTo(LiveRagDisplayMode.SPLIT_LIVE_AND_RAG)
+        assertThat(reloadedSettings.liveInputSource).isEqualTo(LiveInputSource.GLASSES)
+        assertThat(reloadedSettings.liveOutputTarget).isEqualTo(LiveOutputTarget.BOTH)
+        assertThat(reloadedSettings.liveCameraMode).isEqualTo(LiveCameraMode.INTERVAL)
+        assertThat(reloadedSettings.liveCameraIntervalSec).isEqualTo(10)
     }
 }

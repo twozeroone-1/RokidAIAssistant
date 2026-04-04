@@ -34,10 +34,13 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.rokidglasses.service.WakeWordService
 import com.example.rokidglasses.service.photo.CameraService
 import com.example.rokidglasses.ui.SleepModeIndicator
+import com.example.rokidglasses.ui.theme.GlassesTypographyTokens
 import com.example.rokidglasses.ui.theme.RokidGlassesTheme
 import com.example.rokidglasses.viewmodel.GlassesDisplayStage
+import com.example.rokidglasses.viewmodel.GlassesLivePanelContent
 import com.example.rokidglasses.viewmodel.GlassesViewModel
 import com.example.rokidglasses.viewmodel.deriveDisplayStage
+import com.example.rokidglasses.viewmodel.resolveLivePanelContent
 import com.example.rokidglasses.viewmodel.responseFontScaleMultiplier
 import com.example.rokidglasses.viewmodel.toSleepModeSnapshot
 
@@ -356,6 +359,13 @@ fun GlassesMainScreen(
         if (!shouldUseSleepMode || sleepModeStage == GlassesDisplayStage.OUTPUT) {
             MainDisplayArea(
                 displayText = uiState.displayText,
+                livePanelContent = resolveLivePanelContent(
+                    isLiveModeActive = uiState.isLiveModeActive,
+                    liveRagEnabled = uiState.liveRagEnabled,
+                    ragDisplayMode = uiState.liveRagDisplayMode,
+                    assistantText = uiState.liveAssistantText,
+                    ragText = uiState.liveRagText,
+                ),
                 isProcessing = uiState.isProcessing && !shouldUseSleepMode,
                 responseFontScalePercent = uiState.responseFontScalePercent,
                 useResponseFontScale = uiState.displayUsesResponseFontScale,
@@ -417,7 +427,7 @@ fun DeviceSelectorDialog(
             Text(
                 text = stringResource(R.string.select_phone),
                 color = Color.White,
-                fontSize = 18.sp,
+                fontSize = GlassesTypographyTokens.DeviceSelectorTitleSp.sp,
                 fontWeight = FontWeight.Bold
             )
         },
@@ -426,7 +436,7 @@ fun DeviceSelectorDialog(
                 Text(
                     text = stringResource(R.string.no_paired_devices) + "\n" + stringResource(R.string.pair_device_hint),
                     color = Color.White.copy(alpha = 0.7f),
-                    fontSize = 14.sp
+                    fontSize = GlassesTypographyTokens.DeviceSelectorBodySp.sp
                 )
             } else {
                 Column(
@@ -455,13 +465,13 @@ fun DeviceSelectorDialog(
                                 Text(
                                     text = deviceName,
                                     color = Color.White,
-                                    fontSize = 16.sp
+                                    fontSize = GlassesTypographyTokens.DeviceSelectorDeviceNameSp.sp
                                 )
                                 if (isRecommended) {
                                     Text(
                                         text = "★ " + stringResource(R.string.recommended),
                                         color = Color(0xFF64B5F6),
-                                        fontSize = 12.sp,
+                                        fontSize = GlassesTypographyTokens.DeviceSelectorRecommendedSp.sp,
                                         fontWeight = FontWeight.Bold
                                     )
                                 }
@@ -520,7 +530,7 @@ fun StatusIndicator(
             Text(
                 text = deviceName,
                 color = Color.White.copy(alpha = 0.5f),
-                fontSize = 10.sp
+                fontSize = GlassesTypographyTokens.StatusDeviceNameSp.sp
             )
         }
     }
@@ -544,7 +554,7 @@ fun StatusDot(
         Text(
             text = label,
             color = Color.White.copy(alpha = 0.8f),
-            fontSize = 12.sp
+            fontSize = GlassesTypographyTokens.StatusLabelSp.sp
         )
     }
 }
@@ -552,6 +562,7 @@ fun StatusDot(
 @Composable
 fun MainDisplayArea(
     displayText: String,
+    livePanelContent: GlassesLivePanelContent,
     isProcessing: Boolean,
     responseFontScalePercent: Int,
     useResponseFontScale: Boolean,
@@ -565,8 +576,18 @@ fun MainDisplayArea(
     } else {
         1f
     }
-    val fontSize = if (isPaginated) 20f * responseScale else 24f * responseScale
-    val lineHeight = if (isPaginated) 28f * responseScale else 32f * responseScale
+    val fontSize = if (isPaginated) {
+        GlassesTypographyTokens.MainResponsePaginatedSp * responseScale
+    } else {
+        GlassesTypographyTokens.MainResponseSingleSp * responseScale
+    }
+    val lineHeight = if (isPaginated) {
+        GlassesTypographyTokens.MainResponsePaginatedLineHeightSp * responseScale
+    } else {
+        GlassesTypographyTokens.MainResponseSingleLineHeightSp * responseScale
+    }
+    val splitFontSize = GlassesTypographyTokens.MainResponseSplitSp * responseScale
+    val splitLineHeight = GlassesTypographyTokens.MainResponseSplitLineHeightSp * responseScale
 
     Column(
         modifier = modifier
@@ -587,33 +608,55 @@ fun MainDisplayArea(
         }
         
         Spacer(modifier = Modifier.height(16.dp))
-        
-        AnimatedContent(
-            targetState = displayText,
-            transitionSpec = {
-                if (isPaginated) {
-                    // Slide animation for pagination
-                    slideInVertically { height -> height } + fadeIn() togetherWith 
-                    slideOutVertically { height -> -height } + fadeOut()
-                } else {
-                    fadeIn() togetherWith fadeOut()
-                }
-            },
-            label = "display_text"
-        ) { text ->
-            Text(
-                text = text,
-                color = Color.White,
-                fontSize = fontSize.sp,
-                fontWeight = FontWeight.Medium,
-                textAlign = TextAlign.Center,
-                lineHeight = lineHeight.sp,
-                modifier = Modifier.fillMaxWidth()
-            )
+
+        if (livePanelContent.showSplitPanels) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                SplitPanel(
+                    title = stringResource(R.string.live_split_panel_live),
+                    text = livePanelContent.leftText,
+                    modifier = Modifier.weight(1f),
+                    fontSize = splitFontSize,
+                    lineHeight = splitLineHeight,
+                )
+                SplitPanel(
+                    title = stringResource(R.string.live_split_panel_rag),
+                    text = livePanelContent.rightText,
+                    modifier = Modifier.weight(1f),
+                    fontSize = splitFontSize,
+                    lineHeight = splitLineHeight,
+                )
+            }
+        } else {
+            AnimatedContent(
+                targetState = displayText,
+                transitionSpec = {
+                    if (isPaginated) {
+                        // Slide animation for pagination
+                        slideInVertically { height -> height } + fadeIn() togetherWith
+                            slideOutVertically { height -> -height } + fadeOut()
+                    } else {
+                        fadeIn() togetherWith fadeOut()
+                    }
+                },
+                label = "display_text"
+            ) { text ->
+                Text(
+                    text = text,
+                    color = Color.White,
+                    fontSize = fontSize.sp,
+                    fontWeight = FontWeight.Medium,
+                    textAlign = TextAlign.Center,
+                    lineHeight = lineHeight.sp,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
         }
         
         // Navigation hints for paginated content
-        if (isPaginated) {
+        if (isPaginated && !livePanelContent.showSplitPanels) {
             Spacer(modifier = Modifier.height(16.dp))
             Row(
                 horizontalArrangement = Arrangement.spacedBy(16.dp),
@@ -623,18 +666,46 @@ fun MainDisplayArea(
                     Text(
                         text = "▲",
                         color = Color(0xFF64B5F6),
-                        fontSize = 16.sp
+                        fontSize = GlassesTypographyTokens.PageNavigationIconSp.sp
                     )
                 }
                 if (currentPage < totalPages - 1) {
                     Text(
                         text = "▼",
                         color = Color(0xFF64B5F6),
-                        fontSize = 16.sp
+                        fontSize = GlassesTypographyTokens.PageNavigationIconSp.sp
                     )
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun SplitPanel(
+    title: String,
+    text: String,
+    modifier: Modifier = Modifier,
+    fontSize: Float,
+    lineHeight: Float,
+) {
+    Column(
+        modifier = modifier,
+        horizontalAlignment = Alignment.Start,
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Text(
+            text = title,
+            color = Color(0xFF64B5F6),
+            fontSize = GlassesTypographyTokens.MainResponseSplitTitleSp.sp,
+            fontWeight = FontWeight.Bold,
+        )
+        Text(
+            text = text,
+            color = Color.White,
+            fontSize = fontSize.sp,
+            lineHeight = lineHeight.sp,
+        )
     }
 }
 
@@ -652,7 +723,7 @@ fun PageIndicator(
         Text(
             text = stringResource(R.string.page_indicator, currentPage, totalPages),
             color = Color.White.copy(alpha = 0.8f),
-            fontSize = 12.sp,
+            fontSize = GlassesTypographyTokens.PageIndicatorSp.sp,
             modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
         )
     }
@@ -666,7 +737,7 @@ fun HintText(
     Text(
         text = hint,
         color = Color.White.copy(alpha = 0.5f),
-        fontSize = 14.sp,
+        fontSize = GlassesTypographyTokens.HintSp.sp,
         textAlign = TextAlign.Center,
         modifier = modifier
     )

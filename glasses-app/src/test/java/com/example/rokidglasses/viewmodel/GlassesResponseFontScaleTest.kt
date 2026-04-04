@@ -6,6 +6,11 @@ import org.junit.Test
 class GlassesResponseFontScaleTest {
 
     @Test
+    fun `default response font scale percent favors smaller live response text`() {
+        assertThat(DEFAULT_RESPONSE_FONT_SCALE_PERCENT).isEqualTo(85)
+    }
+
+    @Test
     fun `clampResponseFontScalePercent keeps supported range`() {
         assertThat(clampResponseFontScalePercent(20)).isEqualTo(50)
         assertThat(clampResponseFontScalePercent(100)).isEqualTo(100)

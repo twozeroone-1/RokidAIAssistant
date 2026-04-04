@@ -37,6 +37,9 @@
     <string name="reconnect_try_again">다시 연결하고 재시도하세요</string>
     <string name="waiting_phone">휴대폰 처리 대기 중...</string>
     <string name="ai_thinking">AI가 생각 중</string>
+    <string name="live_thinking_summary_format">생각: %1$s</string>
+    <string name="live_split_panel_live">실시간</string>
+    <string name="live_split_panel_rag">문서</string>
     <string name="mic_permission_required">마이크 권한이 필요합니다</string>
     <string name="tap_continue">터치패드를 탭하여 대화 계속</string>
     <string name="you_said">당신: %s\n\nAI가 생각 중...</string>

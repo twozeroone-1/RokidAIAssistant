@@ -464,7 +464,19 @@ class BluetoothSppClient(
     suspend fun sendVoiceStart(): Boolean {
         return sendMessage(Message(type = MessageType.VOICE_START))
     }
-    
+
+    /**
+     * Send one live voice chunk while recording is in progress.
+     */
+    suspend fun sendVoiceData(audioData: ByteArray): Boolean {
+        return sendMessage(
+            Message(
+                type = MessageType.VOICE_DATA,
+                binaryData = audioData
+            )
+        )
+    }
+
     /**
      * Send voice data (with complete audio)
      */

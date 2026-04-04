@@ -1,9 +1,27 @@
 package com.example.rokidphone.data
 
 import androidx.annotation.StringRes
+import com.example.rokidcommon.protocol.LiveRagDisplayMode
 import com.example.rokidphone.R
 import com.example.rokidphone.service.stt.SttProvider
 import kotlin.math.roundToInt
+
+const val GEMINI_LIVE_MODEL_ID = "gemini-3.1-flash-live-preview"
+
+fun resolveGeminiLiveModelId(selectedModelId: String): String {
+    if (selectedModelId.isBlank()) {
+        return GEMINI_LIVE_MODEL_ID
+    }
+
+    return if (
+        selectedModelId.contains("flash-live", ignoreCase = true) ||
+        selectedModelId.contains("live-preview", ignoreCase = true)
+    ) {
+        selectedModelId
+    } else {
+        GEMINI_LIVE_MODEL_ID
+    }
+}
 
 /**
  * AI Service Providers
@@ -666,13 +684,13 @@ object AvailableModels {
 
     val geminiLiveModels = listOf(
         ModelOption(
-            id = "gemini-2.5-flash-native-audio-preview-09-2025",
-            displayName = "Gemini 2.5 Flash Native Audio (Preview)",
+            id = GEMINI_LIVE_MODEL_ID,
+            displayName = "Gemini 3.1 Flash Live Preview",
             provider = AiProvider.GEMINI_LIVE,
             supportsAudio = true,
             supportsVision = true,
             isPreview = true,
-            description = "Native audio streaming model for real-time voice interactions"
+            description = "High-quality, low-latency Live API model for real-time dialogue and voice-first AI applications"
         )
     )
 
@@ -725,6 +743,21 @@ data class ApiSettings(
     val answerMode: AnswerMode = AnswerMode.GENERAL_AI,
     val networkProfile: NetworkProfile = NetworkProfile.AUTO,
     val docsProvider: DocsProvider = DocsProvider.ANYTHING_LLM,
+
+    // Live mode settings
+    val liveModeEnabled: Boolean = false,
+    val liveRagEnabled: Boolean = false,
+    val liveBargeInEnabled: Boolean = true,
+    val liveLongSessionEnabled: Boolean = false,
+    val liveGoogleSearchEnabled: Boolean = false,
+    val liveVoiceName: String = GeminiLiveVoice.AOEDE.voiceName,
+    val liveThinkingLevel: LiveThinkingLevel = LiveThinkingLevel.DEFAULT,
+    val liveThoughtSummariesEnabled: Boolean = false,
+    val liveRagDisplayMode: LiveRagDisplayMode = LiveRagDisplayMode.RAG_RESULT_ONLY,
+    val liveInputSource: LiveInputSource = LiveInputSource.AUTO,
+    val liveOutputTarget: LiveOutputTarget = LiveOutputTarget.AUTO,
+    val liveCameraMode: LiveCameraMode = LiveCameraMode.OFF,
+    val liveCameraIntervalSec: Int = 5,
     
     // API Keys for each provider
     val geminiApiKey: String = "",
@@ -869,7 +902,7 @@ data class ApiSettings(
     companion object {
         const val MIN_RESPONSE_FONT_SCALE_PERCENT = 50
         const val MAX_RESPONSE_FONT_SCALE_PERCENT = 140
-        const val DEFAULT_RESPONSE_FONT_SCALE_PERCENT = 100
+        const val DEFAULT_RESPONSE_FONT_SCALE_PERCENT = 85
         const val RESPONSE_FONT_SCALE_STEP_PERCENT = 5
 
         fun clampResponseFontScalePercent(value: Int): Int {
@@ -962,11 +995,30 @@ data class ApiSettings(
             else -> aiModelId
         }
     }
+
+    fun getEffectiveAssistantProvider(): AiProvider {
+        return if (liveModeEnabled) AiProvider.GEMINI_LIVE else aiProvider
+    }
+
+    fun getEffectiveAssistantModelId(): String {
+        return if (liveModeEnabled) {
+            resolveGeminiLiveModelId(aiModelId)
+        } else {
+            getCurrentModelId()
+        }
+    }
+
+    fun getLiveVoice(): GeminiLiveVoice {
+        return GeminiLiveVoice.fromVoiceName(liveVoiceName)
+    }
     
     /**
      * Check if settings are valid
      */
     fun isValid(): Boolean {
+        if (liveModeEnabled) {
+            return isProviderConfigured(AiProvider.GEMINI_LIVE)
+        }
         if (answerMode == AnswerMode.DOCS) {
             return validateForDocs() is SettingsValidationResult.Valid
         }
@@ -1010,6 +1062,12 @@ data class ApiSettings(
      */
     fun getMissingApiKeys(): List<AiProvider> {
         val missing = mutableListOf<AiProvider>()
+        if (liveModeEnabled) {
+            if (!isProviderConfigured(AiProvider.GEMINI_LIVE)) {
+                missing.add(AiProvider.GEMINI_LIVE)
+            }
+            return missing
+        }
         if (answerMode == AnswerMode.DOCS) {
             return missing
         }
@@ -1073,6 +1131,13 @@ sealed class SettingsValidationResult {
  * Validate settings for specific use case
  */
 fun ApiSettings.validateForChat(): SettingsValidationResult {
+    if (liveModeEnabled) {
+        return if (isProviderConfigured(AiProvider.GEMINI_LIVE)) {
+            SettingsValidationResult.Valid
+        } else {
+            SettingsValidationResult.MissingApiKey(AiProvider.GEMINI_LIVE)
+        }
+    }
     if (answerMode == AnswerMode.DOCS) {
         return validateForDocs()
     }

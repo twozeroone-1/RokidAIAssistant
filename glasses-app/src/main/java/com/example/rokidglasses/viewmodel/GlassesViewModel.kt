@@ -4,8 +4,11 @@ import android.Manifest
 import android.bluetooth.BluetoothDevice
 import android.content.Context
 import android.content.pm.PackageManager
+import android.media.AudioAttributes
 import android.media.AudioFormat
 import android.media.AudioRecord
+import android.media.AudioTrack
+import android.media.MediaPlayer
 import android.media.MediaRecorder
 import android.util.Log
 import androidx.core.app.ActivityCompat
@@ -14,8 +17,12 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.example.rokidcommon.Constants
 import com.example.rokidcommon.protocol.ConnectionState
+import com.example.rokidcommon.protocol.LiveRagDisplayMode
 import com.example.rokidcommon.protocol.Message
 import com.example.rokidcommon.protocol.MessageType
+import com.example.rokidcommon.protocol.LiveTranscriptPayload
+import com.example.rokidcommon.protocol.LiveTranscriptRole
+import com.example.rokidcommon.protocol.resolveEffectiveLiveRagDisplayMode
 import com.example.rokidglasses.R
 import com.example.rokidglasses.sdk.CameraMode
 import com.example.rokidglasses.sdk.CxrServiceManager
@@ -31,6 +38,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import org.json.JSONObject
 import java.io.ByteArrayOutputStream
 
 data class GlassesUiState(
@@ -63,8 +71,34 @@ data class GlassesUiState(
     val photoTransferProgress: Float = 0f,
     // Gemini Live mode state
     val isLiveModeActive: Boolean = false,
-    val liveTranscription: String = ""
+    val liveTranscription: String = "",
+    val liveRagEnabled: Boolean = false,
+    val liveRagDisplayMode: LiveRagDisplayMode = LiveRagDisplayMode.RAG_RESULT_ONLY,
+    val liveAssistantText: String = "",
+    val liveRagText: String = ""
 )
+
+private fun shouldKeepLiveDisplayText(
+    isLiveModeActive: Boolean,
+    liveRagEnabled: Boolean,
+    liveRagDisplayMode: LiveRagDisplayMode,
+    liveRagText: String,
+    liveAssistantText: String,
+): Boolean {
+    if (!isLiveModeActive) {
+        return false
+    }
+    return when (
+        resolveEffectiveLiveRagDisplayMode(
+            liveRagEnabled = liveRagEnabled,
+            configuredMode = liveRagDisplayMode,
+        )
+    ) {
+        LiveRagDisplayMode.RAG_RESULT_ONLY -> liveRagText.isNotBlank()
+        LiveRagDisplayMode.SPLIT_LIVE_AND_RAG ->
+            liveAssistantText.isNotBlank() || liveRagText.isNotBlank()
+    }
+}
 
 /**
  * Glasses ViewModel
@@ -89,6 +123,13 @@ class GlassesViewModel(
     private enum class ResponseDisplayMode {
         CHAT,
         PHOTO_ANALYSIS
+    }
+
+    private enum class LiveCameraStreamingMode {
+        OFF,
+        MANUAL,
+        INTERVAL,
+        REALTIME
     }
     
     private val _uiState = MutableStateFlow(GlassesUiState(
@@ -121,6 +162,7 @@ class GlassesViewModel(
     
     // Audio buffer - collects recording data
     private val audioBuffer = ByteArrayOutputStream()
+    private var liveAudioTrack: AudioTrack? = null
     
     // ========== Gemini Live Mode Related ==========
     
@@ -131,7 +173,8 @@ class GlassesViewModel(
     private var videoStreamingJob: Job? = null
     
     // Video streaming frame rate control (milliseconds)
-    private val videoFrameIntervalMs = 1000L  // ~1fps
+    private var videoFrameIntervalMs = 1000L
+    private var liveCameraMode = LiveCameraStreamingMode.OFF
     
     // Video streaming JPEG compression quality (0-100)
     private val videoFrameQuality = 50
@@ -378,13 +421,18 @@ class GlassesViewModel(
                 Log.d(TAG, "AudioRecord started recording")
                 
                 val buffer = ByteArray(Constants.AUDIO_BUFFER_SIZE)
+                val liveStreaming = isLiveModeActive
                 
                 while (isActive && _uiState.value.isListening) {
                     val readSize = audioRecord?.read(buffer, 0, buffer.size) ?: 0
                     if (readSize > 0) {
-                        // Collect audio data to buffer
-                        synchronized(audioBuffer) {
-                            audioBuffer.write(buffer, 0, readSize)
+                        if (liveStreaming) {
+                            val chunk = buffer.copyOf(readSize)
+                            bluetoothClient.sendVoiceData(chunk)
+                        } else {
+                            synchronized(audioBuffer) {
+                                audioBuffer.write(buffer, 0, readSize)
+                            }
                         }
                     }
                 }
@@ -440,6 +488,34 @@ class GlassesViewModel(
         // Send audio via Bluetooth to phone for processing
         viewModelScope.launch(Dispatchers.IO) {
             try {
+                val liveStreaming = isLiveModeActive
+
+                if (liveStreaming) {
+                    val success = bluetoothClient.sendVoiceEnd(ByteArray(0))
+                    withContext(Dispatchers.Main) {
+                        if (success) {
+                            _uiState.update { it.copy(
+                                isProcessing = false,
+                                isSendingInput = false,
+                                isAwaitingAnalysis = true,
+                                hasVisibleOutput = false,
+                                displayText = context.getString(R.string.waiting_phone),
+                                hintText = context.getString(R.string.ai_thinking)
+                            ) }
+                        } else {
+                            _uiState.update { it.copy(
+                                isProcessing = false,
+                                isSendingInput = false,
+                                isAwaitingAnalysis = false,
+                                hasVisibleOutput = true,
+                                displayText = context.getString(R.string.send_failed),
+                                hintText = context.getString(R.string.reconnect_try_again)
+                            ) }
+                        }
+                    }
+                    return@launch
+                }
+
                 // Get recording data
                 val audioData: ByteArray
                 synchronized(audioBuffer) {
@@ -558,7 +634,22 @@ class GlassesViewModel(
             }
             
             MessageType.AI_RESPONSE_TEXT -> {
-                handleAiResponseText(message)
+                if (_uiState.value.isLiveModeActive &&
+                    _uiState.value.liveRagDisplayMode == LiveRagDisplayMode.SPLIT_LIVE_AND_RAG
+                ) {
+                    val finalAssistantText = message.payload ?: ""
+                    _uiState.update { it.copy(
+                        aiResponse = finalAssistantText,
+                        liveAssistantText = finalAssistantText,
+                        hasVisibleOutput = finalAssistantText.isNotBlank() || it.liveRagText.isNotBlank(),
+                        displayUsesResponseFontScale = false,
+                        isPaginated = false,
+                        currentPage = 0,
+                        totalPages = 1,
+                    ) }
+                } else {
+                    handleAiResponseText(message)
+                }
             }
             
             MessageType.AI_RESPONSE_TTS -> {
@@ -567,7 +658,19 @@ class GlassesViewModel(
                     playAudio(audioData)
                 }
             }
-            
+
+            MessageType.LIVE_AUDIO_CHUNK -> {
+                message.binaryData?.let { audioData ->
+                    viewModelScope.launch(Dispatchers.IO) {
+                        playLiveAudio(audioData)
+                    }
+                }
+            }
+
+            MessageType.LIVE_AUDIO_STOP -> {
+                stopLiveAudioPlayback()
+            }
+             
             MessageType.AI_ERROR -> {
                 _uiState.update { it.copy(
                     isProcessing = false,
@@ -635,43 +738,143 @@ class GlassesViewModel(
                 // Phone started Live mode
                 Log.d(TAG, "Live session started by phone")
                 isLiveModeActive = true
+                applyLiveSessionConfig(message.payload)
                 _uiState.update { it.copy(
                     isLiveModeActive = true,
                     displayUsesResponseFontScale = false,
                     displayText = "🎙️ Live mode activated",
                     hintText = "Real-time voice conversation...",
                     liveTranscription = "",
+                    liveRagEnabled = it.liveRagEnabled,
+                    liveAssistantText = "",
+                    liveRagText = "",
                     hasVisibleOutput = true
                 ) }
-                // Start real-time video streaming to phone
-                startVideoStreaming()
+                if (liveCameraMode == LiveCameraStreamingMode.INTERVAL ||
+                    liveCameraMode == LiveCameraStreamingMode.REALTIME) {
+                    startVideoStreaming()
+                }
             }
             
             MessageType.LIVE_SESSION_END -> {
                 // Phone ended Live mode
                 Log.d(TAG, "Live session ended by phone")
                 isLiveModeActive = false
+                liveCameraMode = LiveCameraStreamingMode.OFF
                 stopVideoStreaming()
+                stopLiveAudioPlayback()
                 _uiState.update { it.copy(
                     isLiveModeActive = false,
                     displayUsesResponseFontScale = false,
                     displayText = "Live mode ended",
                     hintText = context.getString(R.string.tap_touchpad_start),
                     liveTranscription = "",
+                    liveRagEnabled = false,
+                    liveAssistantText = "",
+                    liveRagText = "",
+                    liveRagDisplayMode = LiveRagDisplayMode.RAG_RESULT_ONLY,
                     hasVisibleOutput = true
                 ) }
             }
             
             MessageType.LIVE_TRANSCRIPTION -> {
-                // Real-time transcription text (user voice or AI response)
-                val text = message.payload ?: ""
+                val parsed = LiveTranscriptPayload.fromPayload(message.payload)
+                val text = parsed?.text ?: (message.payload ?: "")
                 Log.d(TAG, "Live transcription: $text")
-                _uiState.update { it.copy(
-                    liveTranscription = text,
-                    hasVisibleOutput = true,
-                    displayUsesResponseFontScale = false,
-                    displayText = text
-                ) }
+                when (parsed?.role) {
+                    LiveTranscriptRole.USER -> {
+                        _uiState.update { state ->
+                            val isNewLiveTurn = state.isLiveModeActive &&
+                                text.isNotBlank() &&
+                                (state.userTranscript.isBlank() || !text.startsWith(state.userTranscript))
+                            val clearedAssistantText = if (isNewLiveTurn) "" else state.liveAssistantText
+                            val clearedRagText = if (isNewLiveTurn) "" else state.liveRagText
+                            state.copy(
+                                liveAssistantText = clearedAssistantText,
+                                liveRagText = clearedRagText,
+                                userTranscript = text,
+                                liveTranscription = text,
+                                hasVisibleOutput = text.isNotBlank(),
+                                displayUsesResponseFontScale = false,
+                                displayText = if (
+                                    shouldKeepLiveDisplayText(
+                                        isLiveModeActive = state.isLiveModeActive,
+                                        liveRagEnabled = state.liveRagEnabled,
+                                        liveRagDisplayMode = state.liveRagDisplayMode,
+                                        liveRagText = clearedRagText,
+                                        liveAssistantText = clearedAssistantText,
+                                    )
+                                ) {
+                                    state.displayText
+                                } else {
+                                    text
+                                },
+                            )
+                        }
+                    }
+
+                    LiveTranscriptRole.THINKING -> {
+                        _uiState.update { it.copy(
+                            liveTranscription = text,
+                            hasVisibleOutput = text.isNotBlank(),
+                            displayUsesResponseFontScale = false,
+                            displayText = if (
+                                shouldKeepLiveDisplayText(
+                                    isLiveModeActive = it.isLiveModeActive,
+                                    liveRagEnabled = it.liveRagEnabled,
+                                    liveRagDisplayMode = it.liveRagDisplayMode,
+                                    liveRagText = it.liveRagText,
+                                    liveAssistantText = it.liveAssistantText,
+                                )
+                            ) {
+                                it.displayText
+                            } else {
+                                context.getString(R.string.live_thinking_summary_format, text)
+                            },
+                        ) }
+                    }
+
+                    LiveTranscriptRole.ASSISTANT, null -> {
+                        _uiState.update { it.copy(
+                            aiResponse = text,
+                            liveTranscription = text,
+                            liveAssistantText = text,
+                            hasVisibleOutput = text.isNotBlank() || it.liveRagText.isNotBlank(),
+                            displayUsesResponseFontScale = false,
+                            displayText = if (
+                                shouldKeepLiveDisplayText(
+                                    isLiveModeActive = it.isLiveModeActive,
+                                    liveRagEnabled = it.liveRagEnabled,
+                                    liveRagDisplayMode = it.liveRagDisplayMode,
+                                    liveRagText = it.liveRagText,
+                                    liveAssistantText = it.liveAssistantText,
+                                )
+                            ) it.displayText else text,
+                        ) }
+                    }
+
+                    LiveTranscriptRole.RAG -> {
+                        _uiState.update { state ->
+                            if (!state.liveRagEnabled) {
+                                state
+                            } else {
+                                val effectiveMode = resolveEffectiveLiveRagDisplayMode(
+                                    liveRagEnabled = state.liveRagEnabled,
+                                    configuredMode = state.liveRagDisplayMode,
+                                )
+                                state.copy(
+                                    liveRagText = text,
+                                    hasVisibleOutput = state.liveAssistantText.isNotBlank() || text.isNotBlank(),
+                                    displayUsesResponseFontScale = false,
+                                    displayText = if (
+                                        state.isLiveModeActive &&
+                                        effectiveMode == LiveRagDisplayMode.SPLIT_LIVE_AND_RAG
+                                    ) state.displayText else text,
+                                )
+                            }
+                        }
+                    }
+                }
             }
             
             MessageType.PHOTO_ANALYSIS_RESULT -> {
@@ -735,8 +938,139 @@ class GlassesViewModel(
     }
     
     private fun playAudio(audioData: ByteArray) {
-        // TODO: Use AudioTrack to play audio
-        Log.d(TAG, "Playing audio: ${audioData.size} bytes")
+        try {
+            val tempFile = kotlin.io.path.createTempFile(
+                directory = context.cacheDir.toPath(),
+                prefix = "rokid_tts_",
+                suffix = ".mp3"
+            ).toFile()
+            tempFile.writeBytes(audioData)
+
+            MediaPlayer().apply {
+                setDataSource(tempFile.absolutePath)
+                setAudioAttributes(
+                    AudioAttributes.Builder()
+                        .setUsage(AudioAttributes.USAGE_ASSISTANT)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                        .build()
+                )
+                setOnCompletionListener { mp ->
+                    mp.release()
+                    tempFile.delete()
+                }
+                setOnErrorListener { mp, _, _ ->
+                    mp.release()
+                    tempFile.delete()
+                    true
+                }
+                prepare()
+                start()
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to play TTS audio", e)
+        }
+    }
+
+    private fun playLiveAudio(audioData: ByteArray) {
+        try {
+            val track = liveAudioTrack ?: createLiveAudioTrack().also { created ->
+                liveAudioTrack = created
+            }
+            val result = track.write(audioData, 0, audioData.size)
+            if (result < 0) {
+                Log.w(TAG, "AudioTrack write failed: $result")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to play live audio", e)
+            stopLiveAudioPlayback()
+        }
+    }
+
+    private fun createLiveAudioTrack(): AudioTrack {
+        val minBufferSize = AudioTrack.getMinBufferSize(
+            24_000,
+            AudioFormat.CHANNEL_OUT_MONO,
+            AudioFormat.ENCODING_PCM_16BIT
+        )
+        val track = AudioTrack.Builder()
+            .setAudioAttributes(
+                AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_ASSISTANT)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                    .build()
+            )
+            .setAudioFormat(
+                AudioFormat.Builder()
+                    .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
+                    .setSampleRate(24_000)
+                    .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
+                    .build()
+            )
+            .setBufferSizeInBytes(maxOf(minBufferSize * 2, 4096))
+            .setTransferMode(AudioTrack.MODE_STREAM)
+            .build()
+        track.play()
+        return track
+    }
+
+    private fun stopLiveAudioPlayback() {
+        try {
+            liveAudioTrack?.pause()
+            liveAudioTrack?.flush()
+            liveAudioTrack?.release()
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to stop live audio playback", e)
+        } finally {
+            liveAudioTrack = null
+        }
+    }
+
+    private fun applyLiveSessionConfig(payload: String?) {
+        if (payload.isNullOrBlank()) {
+            liveCameraMode = LiveCameraStreamingMode.REALTIME
+            videoFrameIntervalMs = 1000L
+            _uiState.update {
+                it.copy(
+                    liveRagEnabled = false,
+                    liveRagDisplayMode = LiveRagDisplayMode.RAG_RESULT_ONLY,
+                )
+            }
+            return
+        }
+
+        try {
+            val json = JSONObject(payload)
+            liveCameraMode = when (json.optString("cameraMode")) {
+                "OFF" -> LiveCameraStreamingMode.OFF
+                "MANUAL" -> LiveCameraStreamingMode.MANUAL
+                "INTERVAL" -> LiveCameraStreamingMode.INTERVAL
+                "REALTIME" -> LiveCameraStreamingMode.REALTIME
+                else -> LiveCameraStreamingMode.REALTIME
+            }
+            val intervalSec = json.optInt("cameraIntervalSec", 1).coerceAtLeast(1)
+            videoFrameIntervalMs = intervalSec * 1000L
+            val liveRagEnabled = json.optBoolean("liveRagEnabled", false)
+            val ragDisplayMode = resolveEffectiveLiveRagDisplayMode(
+                liveRagEnabled = liveRagEnabled,
+                configuredMode = LiveRagDisplayMode.fromRaw(json.optString("ragDisplayMode")),
+            )
+            _uiState.update {
+                it.copy(
+                    liveRagEnabled = liveRagEnabled,
+                    liveRagDisplayMode = ragDisplayMode,
+                )
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to parse live session config: ${e.message}")
+            liveCameraMode = LiveCameraStreamingMode.REALTIME
+            videoFrameIntervalMs = 1000L
+            _uiState.update {
+                it.copy(
+                    liveRagEnabled = false,
+                    liveRagDisplayMode = LiveRagDisplayMode.RAG_RESULT_ONLY,
+                )
+            }
+        }
     }
     
     /**
@@ -790,6 +1124,8 @@ class GlassesViewModel(
             isAwaitingAnalysis = false,
             hasVisibleOutput = true,
             aiResponse = responseText,
+            liveAssistantText = "",
+            liveRagText = "",
             displayUsesResponseFontScale = true,
             displayText = displayText,
             hintText = hintText,
@@ -853,6 +1189,8 @@ class GlassesViewModel(
             isSendingInput = false,
             isAwaitingAnalysis = false,
             hasVisibleOutput = false,
+            liveAssistantText = "",
+            liveRagText = "",
             displayText = context.getString(R.string.tap_touchpad_start),
             hintText = context.getString(R.string.tap_touchpad_record)
         ) }
@@ -864,16 +1202,10 @@ class GlassesViewModel(
 
     fun handlePrimaryAction() {
         val state = _uiState.value
-        when {
-            state.isPaginated && state.currentPage < state.totalPages - 1 -> nextPage()
-            state.isPaginated -> {
-                dismissOutput()
-                if (!state.sleepModeEnabled) {
-                    toggleRecording()
-                }
-            }
-            state.sleepModeEnabled && state.hasVisibleOutput -> dismissOutput()
-            else -> toggleRecording()
+        when (resolvePrimaryAction(state)) {
+            PrimaryActionOutcome.NEXT_PAGE -> nextPage()
+            PrimaryActionOutcome.DISMISS_OUTPUT -> dismissOutput()
+            PrimaryActionOutcome.TOGGLE_RECORDING -> toggleRecording()
         }
     }
     
@@ -895,6 +1227,7 @@ class GlassesViewModel(
         recordingJob?.cancel()
         videoStreamingJob?.cancel()
         audioRecord?.release()
+        stopLiveAudioPlayback()
         bluetoothClient.disconnect()
         cameraManager?.release()
         cxrServiceManager?.release()

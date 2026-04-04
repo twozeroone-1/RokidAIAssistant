@@ -25,9 +25,13 @@ import com.example.rokidcommon.protocol.ConnectionState
 import com.example.rokidphone.ConversationItem
 import com.example.rokidphone.R
 import com.example.rokidphone.data.DocsHealthStatus
+import com.example.rokidphone.data.LiveInputSource
+import com.example.rokidphone.data.LiveOutputTarget
+import com.example.rokidphone.data.LiveThinkingLevel
 import com.example.rokidphone.data.AvailableModels
 import com.example.rokidphone.data.db.RecordingSource
 import com.example.rokidphone.data.db.RecordingState
+import com.example.rokidphone.service.ai.LiveSessionStatusSnapshot
 import com.example.rokidphone.ui.components.*
 import com.example.rokidphone.ui.theme.AppShapeTokens
 import com.example.rokidphone.ui.theme.ExtendedTheme
@@ -44,7 +48,10 @@ fun HomeScreen(
     isServiceRunning: Boolean,
     latestPhotoPath: String?,
     processingStatus: String?,
+    liveUsageSummary: String?,
+    liveSessionStatus: LiveSessionStatusSnapshot?,
     currentModelId: String,
+    isLiveMode: Boolean,
     conversations: List<ConversationItem>,
     docsWorkspaceSlug: String = "",
     docsHealthStatus: DocsHealthStatus = DocsHealthStatus.UNKNOWN,
@@ -66,6 +73,16 @@ fun HomeScreen(
     modifier: Modifier = Modifier
 ) {
     val currentModel = AvailableModels.findModel(currentModelId)
+    val currentAssistantLabel = if (isLiveMode) {
+        stringResource(R.string.provider_gemini_live)
+    } else {
+        currentModel?.displayName ?: currentModelId
+    }
+    val currentAssistantTitle = if (isLiveMode) {
+        stringResource(R.string.current_mode)
+    } else {
+        stringResource(R.string.current_model)
+    }
     
     LazyColumn(
         modifier = modifier
@@ -112,8 +129,8 @@ fun HomeScreen(
                 // Current AI model
                 InfoCard(
                     icon = Icons.Default.Psychology,
-                    title = stringResource(R.string.current_model),
-                    value = currentModel?.displayName ?: currentModelId,
+                    title = currentAssistantTitle,
+                    value = currentAssistantLabel,
                     modifier = Modifier.weight(1f)
                 )
             }
@@ -249,7 +266,9 @@ fun HomeScreen(
         item {
             StatusFooter(
                 processingStatus = processingStatus,
-                modelName = currentModel?.displayName ?: currentModelId
+                liveSessionStatus = liveSessionStatus,
+                liveUsageSummary = liveUsageSummary,
+                modelName = currentAssistantLabel
             )
         }
     }
@@ -630,6 +649,8 @@ private fun ConversationBubbleCard(item: ConversationItem) {
 @Composable
 private fun StatusFooter(
     processingStatus: String?,
+    liveSessionStatus: LiveSessionStatusSnapshot?,
+    liveUsageSummary: String?,
     modelName: String
 ) {
     val ready = stringResource(R.string.ready)
@@ -639,47 +660,204 @@ private fun StatusFooter(
         shape = MaterialTheme.shapes.small,
         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
     ) {
-        Row(
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(12.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
+                .padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.Top
+            ) {
+                Row(
+                    modifier = Modifier.weight(1f),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Info,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        text = processingStatus ?: ready,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+
+                Surface(
+                    shape = RoundedCornerShape(999.dp),
+                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.9f)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Psychology,
+                            contentDescription = null,
+                            modifier = Modifier.size(14.dp),
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                        Text(
+                            text = modelName,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primary,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                }
+            }
+
+            if (liveSessionStatus != null) {
+                LiveSessionStatusPanel(status = liveSessionStatus)
+            }
+
+            if (!liveUsageSummary.isNullOrBlank()) {
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.65f)
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 10.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.Top,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Tune,
+                            contentDescription = null,
+                            modifier = Modifier
+                                .padding(top = 1.dp)
+                                .size(14.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.9f)
+                        )
+                        Text(
+                            text = liveUsageSummary,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.92f)
+                        )
+                    }
+                }
+            } else {
+                Spacer(modifier = Modifier.height(2.dp))
+            }
+        }
+    }
+}
+
+@Composable
+private fun LiveSessionStatusPanel(status: LiveSessionStatusSnapshot) {
+    val routeSummary = stringResource(
+        R.string.live_status_route_summary,
+        status.inputSource.toLiveSourceLabel(),
+        status.outputTarget.toLiveOutputLabel(),
+    )
+    val capabilitySummary = stringResource(
+        R.string.live_status_capability_summary,
+        status.toSearchStatusLabel(),
+        status.toRagStatusLabel(),
+        status.thinkingLevel.toThinkingLabel(),
+    )
+
+    Surface(
+        shape = RoundedCornerShape(12.dp),
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.72f)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 10.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Icon(
-                    imageVector = Icons.Default.Info,
+                    imageVector = Icons.Default.HeadsetMic,
                     contentDescription = null,
                     modifier = Modifier.size(14.dp),
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.9f)
                 )
                 Text(
-                    text = processingStatus ?: ready,
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    text = routeSummary,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.95f)
                 )
             }
-            
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Icon(
-                    imageVector = Icons.Default.Psychology,
+                    imageVector = Icons.Default.Tune,
                     contentDescription = null,
                     modifier = Modifier.size(14.dp),
-                    tint = MaterialTheme.colorScheme.primary
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.9f)
                 )
                 Text(
-                    text = modelName,
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.primary
+                    text = capabilitySummary,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.95f)
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun LiveInputSource.toLiveSourceLabel(): String {
+    return when (this) {
+        LiveInputSource.PHONE -> stringResource(R.string.filter_phone)
+        LiveInputSource.GLASSES -> stringResource(R.string.filter_glasses)
+        LiveInputSource.AUTO -> stringResource(R.string.live_status_auto)
+    }
+}
+
+@Composable
+private fun LiveOutputTarget.toLiveOutputLabel(): String {
+    return when (this) {
+        LiveOutputTarget.PHONE -> stringResource(R.string.filter_phone)
+        LiveOutputTarget.GLASSES -> stringResource(R.string.filter_glasses)
+        LiveOutputTarget.BOTH -> stringResource(R.string.live_status_both)
+        LiveOutputTarget.AUTO -> stringResource(R.string.live_status_auto)
+    }
+}
+
+@Composable
+private fun LiveThinkingLevel.toThinkingLabel(): String {
+    return when (this) {
+        LiveThinkingLevel.DEFAULT -> stringResource(R.string.live_thinking_default)
+        LiveThinkingLevel.MINIMAL -> stringResource(R.string.live_thinking_minimal)
+        LiveThinkingLevel.LOW -> stringResource(R.string.live_thinking_low)
+        LiveThinkingLevel.MEDIUM -> stringResource(R.string.live_thinking_medium)
+        LiveThinkingLevel.HIGH -> stringResource(R.string.live_thinking_high)
+    }
+}
+
+@Composable
+private fun LiveSessionStatusSnapshot.toSearchStatusLabel(): String {
+    return when {
+        !googleSearchEnabledInSettings -> stringResource(R.string.live_status_off)
+        googleSearchAvailableForSession -> stringResource(R.string.live_status_enabled)
+        else -> stringResource(R.string.live_status_session_disabled)
+    }
+}
+
+@Composable
+private fun LiveSessionStatusSnapshot.toRagStatusLabel(): String {
+    return if (liveRagEnabled) {
+        stringResource(R.string.live_status_enabled)
+    } else {
+        stringResource(R.string.live_status_off)
     }
 }
 

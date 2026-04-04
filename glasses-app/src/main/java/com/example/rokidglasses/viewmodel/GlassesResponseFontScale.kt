@@ -4,7 +4,7 @@ import kotlin.math.roundToInt
 
 internal const val MIN_RESPONSE_FONT_SCALE_PERCENT = 50
 internal const val MAX_RESPONSE_FONT_SCALE_PERCENT = 140
-internal const val DEFAULT_RESPONSE_FONT_SCALE_PERCENT = 100
+internal const val DEFAULT_RESPONSE_FONT_SCALE_PERCENT = 85
 internal const val RESPONSE_FONT_SCALE_STEP_PERCENT = 5
 
 internal fun clampResponseFontScalePercent(value: Int): Int {

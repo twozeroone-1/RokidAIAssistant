@@ -2,6 +2,7 @@ package com.example.rokidphone.service.ai
 
 import android.content.Context
 import android.util.Log
+import com.example.rokidphone.data.LiveThinkingLevel
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -32,9 +33,18 @@ import org.json.JSONObject
 class GeminiLiveSession(
     private val context: Context,
     private val apiKey: String,
-    private val modelId: String = "gemini-2.5-flash-preview-native-audio-dialog",
-    private val systemPrompt: String = ""
-) {
+    private val modelId: String = "gemini-3.1-flash-live-preview",
+    private val systemPrompt: String = "",
+    private val liveVoiceName: String,
+    private val capturePhoneAudio: Boolean = true,
+    private val playbackPhoneAudio: Boolean = true,
+    private val enableLongSession: Boolean = false,
+    private val sessionResumptionHandle: String? = null,
+    private val thinkingLevel: LiveThinkingLevel = LiveThinkingLevel.DEFAULT,
+    private val includeThoughtSummaries: Boolean = false,
+    private val extraToolDeclarations: List<JSONObject> = emptyList(),
+    private val routerConfigurator: (ToolCallRouter) -> Unit = {},
+) : LiveSessionClient {
     companion object {
         private const val TAG = "GeminiLiveSession"
     }
@@ -54,44 +64,62 @@ class GeminiLiveSession(
     }
 
     private val _sessionState = MutableStateFlow(SessionState.IDLE)
-    val sessionState = _sessionState.asStateFlow()
+    override val sessionState = _sessionState.asStateFlow()
 
     private val _errorMessage = MutableStateFlow<String?>(null)
-    val errorMessage = _errorMessage.asStateFlow()
+    override val errorMessage = _errorMessage.asStateFlow()
 
     // ========== Session Components ==========
 
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
     private var liveService: GeminiLiveService? = null
+    private var liveServiceStateJob: Job? = null
     private var audioManager: LiveAudioManager? = null
     private var toolCallRouter: ToolCallRouter? = null
+    private var lastHandledConnectionState: GeminiLiveService.ConnectionState? = null
 
     // ========== Event Streams ==========
 
     /**
      * User speech transcription event
      */
-    private val _inputTranscription = MutableSharedFlow<String>()
-    val inputTranscription = _inputTranscription.asSharedFlow()
+    private val _inputTranscription = MutableSharedFlow<String>(extraBufferCapacity = 16)
+    override val inputTranscription = _inputTranscription.asSharedFlow()
 
     /**
      * AI response transcription event
      */
-    private val _outputTranscription = MutableSharedFlow<String>()
-    val outputTranscription = _outputTranscription.asSharedFlow()
+    private val _outputTranscription = MutableSharedFlow<String>(extraBufferCapacity = 16)
+    override val outputTranscription = _outputTranscription.asSharedFlow()
+
+    private val _thoughtSummary = MutableSharedFlow<String>(extraBufferCapacity = 16)
+    override val thoughtSummary = _thoughtSummary.asSharedFlow()
+
+    private val _outputAudio = MutableSharedFlow<ByteArray>(extraBufferCapacity = 16)
+    override val outputAudio = _outputAudio.asSharedFlow()
+
+    private val _usageMetadata = MutableSharedFlow<LiveUsageMetadata>(extraBufferCapacity = 8)
+    override val usageMetadata = _usageMetadata.asSharedFlow()
 
     /**
      * AI turn complete event
      */
-    private val _turnComplete = MutableSharedFlow<Unit>()
-    val turnComplete = _turnComplete.asSharedFlow()
+    private val _turnComplete = MutableSharedFlow<Unit>(extraBufferCapacity = 4)
+    override val turnComplete = _turnComplete.asSharedFlow()
 
     /**
      * Session interrupted event (User interrupted AI)
      */
-    private val _interrupted = MutableSharedFlow<Unit>()
-    val interrupted = _interrupted.asSharedFlow()
+    private val _interrupted = MutableSharedFlow<Unit>(extraBufferCapacity = 4)
+    override val interrupted = _interrupted.asSharedFlow()
+
+    private val _sessionResumptionUpdates =
+        MutableSharedFlow<LiveSessionResumptionUpdate>(extraBufferCapacity = 4)
+    override val sessionResumptionUpdates = _sessionResumptionUpdates.asSharedFlow()
+
+    private val _goAwayNotices = MutableSharedFlow<LiveGoAwayNotice>(extraBufferCapacity = 4)
+    override val goAwayNotices = _goAwayNotices.asSharedFlow()
 
     /**
      * Tool call event
@@ -124,6 +152,10 @@ class GeminiLiveSession(
      */
     private var toolDeclarations: List<JSONObject>? = null
 
+    internal fun shouldPauseRecordingDuringPlayback(vadConfig: VadConfig): Boolean {
+        return vadConfig.activityHandling == GeminiLiveService.ActivityHandling.NO_INTERRUPTION
+    }
+
     // ========== Session Control ==========
 
     /**
@@ -133,9 +165,9 @@ class GeminiLiveSession(
      * @param tools Tool declarations (optional)
      * @return Whether the startup was successful
      */
-    fun start(
-        vadConfig: VadConfig = VadConfig(),
-        tools: List<JSONObject>? = null
+    override fun start(
+        vadConfig: VadConfig,
+        tools: List<JSONObject>?
     ): Boolean {
         if (_sessionState.value != SessionState.IDLE && _sessionState.value != SessionState.ERROR) {
             Log.w(TAG, "Session is already in progress, state: ${_sessionState.value}")
@@ -149,6 +181,7 @@ class GeminiLiveSession(
 
         _errorMessage.value = null
         _sessionState.value = SessionState.CONNECTING
+        lastHandledConnectionState = null
 
         try {
             // Initialize ToolCallRouter
@@ -163,6 +196,8 @@ class GeminiLiveSession(
                     systemToolsHandler.handleMakeCall(call)
                 }
 
+                routerConfigurator(router)
+
                 // Collect tool execution results and return to WebSocket
                 scope.launch {
                     router.toolResults.collect { result ->
@@ -172,21 +207,25 @@ class GeminiLiveSession(
                 }
             }
 
-            // Initialize Audio Manager
-            audioManager = LiveAudioManager(context, scope).apply {
-                // Set audio chunk callback
-                onAudioChunk = { chunk ->
-                    // Send recording data to Gemini
-                    liveService?.sendAudio(chunk)
-                }
+            if (capturePhoneAudio || playbackPhoneAudio) {
+                audioManager = LiveAudioManager(context, scope).apply {
+                    setPauseRecordingDuringPlayback(
+                        shouldPauseRecordingDuringPlayback(vadConfig)
+                    )
+                    if (capturePhoneAudio) {
+                        onAudioChunk = { chunk ->
+                            liveService?.sendAudio(chunk)
+                        }
+                    }
 
-                onPlaybackComplete = {
-                    Log.d(TAG, "AI response playback complete")
-                }
+                    onPlaybackComplete = {
+                        Log.d(TAG, "AI response playback complete")
+                    }
 
-                onError = { error ->
-                    Log.e(TAG, "Audio error: $error")
-                    _errorMessage.value = error
+                    onError = { error ->
+                        Log.e(TAG, "Audio error: $error")
+                        _errorMessage.value = error
+                    }
                 }
             }
 
@@ -195,6 +234,11 @@ class GeminiLiveSession(
                 apiKey = apiKey,
                 modelId = modelId,
                 systemPrompt = systemPrompt,
+                liveVoiceName = liveVoiceName,
+                enableLongSession = enableLongSession,
+                sessionResumptionHandle = sessionResumptionHandle,
+                thinkingLevel = thinkingLevel,
+                includeThoughtSummaries = includeThoughtSummaries,
                 scope = scope
             ).apply {
                 // Update VAD settings
@@ -207,7 +251,7 @@ class GeminiLiveSession(
 
                 // Set callbacks
                 onConnectionStateChanged = { state ->
-                    handleConnectionStateChange(state)
+                    handleConnectionStateChangeIfNew(state)
                 }
 
                 onAudioReceived = { audioData ->
@@ -233,13 +277,48 @@ class GeminiLiveSession(
                 onOutputTranscription = { text ->
                     handleOutputTranscription(text)
                 }
+
+                onThoughtSummary = { text ->
+                    handleThoughtSummary(text)
+                }
+
+                onUsageMetadata = { metadata ->
+                    scope.launch {
+                        _usageMetadata.emit(metadata)
+                    }
+                }
+
+                onSessionResumptionUpdate = { update ->
+                    scope.launch {
+                        _sessionResumptionUpdates.emit(update)
+                    }
+                }
+
+                onGoAway = { notice ->
+                    scope.launch {
+                        _goAwayNotices.emit(notice)
+                    }
+                }
+            }
+
+            lastHandledConnectionState = liveService?.connectionState?.value
+
+            liveServiceStateJob = scope.launch {
+                liveService?.connectionState?.collect { state ->
+                    handleConnectionStateChangeIfNew(state)
+                }
             }
 
             // Request audio focus
             audioManager?.requestAudioFocus()
 
             // Start connection
-            liveService?.connect(tools)
+            val mergedTools = when {
+                tools.isNullOrEmpty() -> extraToolDeclarations.ifEmpty { null }
+                extraToolDeclarations.isEmpty() -> tools
+                else -> tools + extraToolDeclarations
+            }
+            liveService?.connect(mergedTools)
 
             return true
 
@@ -264,6 +343,9 @@ class GeminiLiveSession(
         _sessionState.value = SessionState.DISCONNECTING
 
         try {
+            liveServiceStateJob?.cancel()
+            liveServiceStateJob = null
+
             // Stop recording and playback
             audioManager?.release()
             audioManager = null
@@ -316,13 +398,22 @@ class GeminiLiveSession(
      *
      * @param jpegData Image data in JPEG format
      */
-    fun sendVideoFrame(jpegData: ByteArray) {
+    override fun sendVideoFrame(jpegData: ByteArray) {
         if (_sessionState.value != SessionState.ACTIVE) {
             Log.w(TAG, "Session not active, cannot send video")
             return
         }
 
         liveService?.sendVideoFrame(jpegData)
+    }
+
+    override fun sendAudioChunk(audioData: ByteArray) {
+        if (_sessionState.value != SessionState.ACTIVE) {
+            Log.w(TAG, "Session not active, cannot send audio chunk")
+            return
+        }
+
+        liveService?.sendAudio(audioData)
     }
 
     /**
@@ -339,7 +430,7 @@ class GeminiLiveSession(
      * Manually end input turn
      * Used when not using automatic VAD
      */
-    fun endOfTurn() {
+    override fun endOfTurn() {
         liveService?.endOfTurn()
     }
 
@@ -348,6 +439,14 @@ class GeminiLiveSession(
     /**
      * Handle connection state changes
      */
+    private fun handleConnectionStateChangeIfNew(state: GeminiLiveService.ConnectionState) {
+        if (lastHandledConnectionState == state) {
+            return
+        }
+        lastHandledConnectionState = state
+        handleConnectionStateChange(state)
+    }
+
     private fun handleConnectionStateChange(state: GeminiLiveService.ConnectionState) {
         Log.d(TAG, "Connection state changed: $state")
 
@@ -368,13 +467,14 @@ class GeminiLiveSession(
             GeminiLiveService.ConnectionState.READY -> {
                 _sessionState.value = SessionState.ACTIVE
 
-                // Connection ready, start recording
-                scope.launch {
-                    delay(100)  // Short delay to ensure WebSocket stability
-                    audioManager?.startRecording()
+                if (capturePhoneAudio) {
+                    scope.launch {
+                        delay(100)
+                        audioManager?.startRecording()
+                    }
                 }
 
-                Log.d(TAG, "Session ready, starting recording")
+                Log.d(TAG, "Session ready")
             }
 
             GeminiLiveService.ConnectionState.ERROR -> {
@@ -388,8 +488,13 @@ class GeminiLiveSession(
      * Handle received AI audio
      */
     private fun handleAudioReceived(audioData: ByteArray) {
-        // Add audio to playback queue
-        audioManager?.playAudio(audioData)
+        scope.launch {
+            _outputAudio.emit(audioData)
+        }
+
+        if (playbackPhoneAudio) {
+            audioManager?.playAudio(audioData)
+        }
     }
 
     /**
@@ -398,8 +503,9 @@ class GeminiLiveSession(
     private fun handleTurnComplete() {
         Log.d(TAG, "AI turn complete")
 
-        // Finish playback
-        audioManager?.finishPlayback()
+        if (playbackPhoneAudio) {
+            audioManager?.finishPlayback()
+        }
 
         // Emit event
         scope.launch {
@@ -413,8 +519,9 @@ class GeminiLiveSession(
     private fun handleInterrupted() {
         Log.d(TAG, "AI interrupted by user")
 
-        // Stop playback immediately
-        audioManager?.stopPlayback()
+        if (playbackPhoneAudio) {
+            audioManager?.stopPlayback()
+        }
 
         // Emit event
         scope.launch {
@@ -471,18 +578,27 @@ class GeminiLiveSession(
         }
     }
 
+    private fun handleThoughtSummary(text: String) {
+        Log.d(TAG, "AI thought summary: $text")
+        scope.launch {
+            _thoughtSummary.emit(text)
+        }
+    }
+
     // ========== Resource Release ==========
 
     /**
      * Release all resources
      */
-    fun release() {
+    override fun release() {
         Log.d(TAG, "Releasing GeminiLiveSession resources")
 
         // Cancel all in-flight tool calls
         toolCallRouter?.cancelAll()
         toolCallRouter?.release()
         toolCallRouter = null
+        liveServiceStateJob?.cancel()
+        liveServiceStateJob = null
 
         stop()
 

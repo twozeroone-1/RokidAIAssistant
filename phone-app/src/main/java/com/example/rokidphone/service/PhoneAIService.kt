@@ -10,6 +10,10 @@ import androidx.core.app.NotificationCompat
 import com.example.rokidcommon.Constants
 import com.example.rokidcommon.protocol.Message
 import com.example.rokidcommon.protocol.MessageType
+import com.example.rokidcommon.protocol.LiveRagDisplayMode
+import com.example.rokidcommon.protocol.LiveTranscriptPayload
+import com.example.rokidcommon.protocol.LiveTranscriptRole
+import com.example.rokidcommon.protocol.resolveEffectiveLiveRagDisplayMode
 import com.example.rokidcommon.protocol.photo.PhotoTransferState
 import com.example.rokidphone.BuildConfig
 import com.example.rokidphone.MainActivity
@@ -22,10 +26,22 @@ import com.example.rokidphone.data.SettingsRepository
 import com.example.rokidphone.data.SettingsValidationResult
 import com.example.rokidphone.data.db.ConversationRepository
 import com.example.rokidphone.data.db.RecordingRepository
+import com.example.rokidphone.data.log.LogManager
 import com.example.rokidphone.data.toAnythingLlmSettings
 import com.example.rokidphone.service.ai.AiServiceFactory
 import com.example.rokidphone.service.ai.AiServiceProvider
 import com.example.rokidphone.service.ai.GeminiLiveSession
+import com.example.rokidphone.service.ai.GeminiLiveCostEstimator
+import com.example.rokidphone.service.ai.LiveUsageMetadata
+import com.example.rokidphone.service.ai.LiveRagToolAdapter
+import com.example.rokidphone.service.ai.LiveRagTurnState
+import com.example.rokidphone.service.ai.LiveSessionConfig
+import com.example.rokidphone.service.ai.LiveSessionCoordinator
+import com.example.rokidphone.service.ai.LiveSessionState
+import com.example.rokidphone.service.ai.LiveTranscriptAccumulator
+import com.example.rokidphone.service.ai.buildLiveToolDeclarations
+import com.example.rokidphone.service.ai.LiveUsageSummaryRetention
+import com.example.rokidphone.service.ai.resolveLiveErrorPresentation
 import com.example.rokidphone.service.cxr.CxrMobileManager
 import com.example.rokidphone.service.session.AiRequestSessionSupport
 import com.example.rokidphone.service.stt.SttProvider
@@ -56,6 +72,7 @@ import com.rokid.cxr.client.utils.ValueUtil
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
+import org.json.JSONObject
 
 /**
  * Phone AI Service
@@ -103,8 +120,11 @@ class PhoneAIService : Service() {
     // CXR-M SDK Manager (for Rokid glasses connection and photo capture)
     private var cxrManager: CxrMobileManager? = null
     
-    // Gemini Live session (real-time bidirectional voice)
-    private var liveSession: GeminiLiveSession? = null
+    // Live session coordinator (real-time bidirectional voice)
+    private var liveCoordinator: LiveSessionCoordinator? = null
+    private var liveCollectorJobs: List<Job> = emptyList()
+    private var latestValidatedSettings: ApiSettings? = null
+    private var liveSessionAnnouncedToGlasses = false
     
     // Photo repository for managing received photos
     private var photoRepository: PhotoRepository? = null
@@ -118,6 +138,11 @@ class PhoneAIService : Service() {
     // Current voice conversation ID (for grouping voice interactions)
     private var currentVoiceConversationId: String? = null
     private var currentLiveTurnConversationId: String? = null
+    private var pendingLiveUserTranscript: String = ""
+    private var pendingLiveAssistantTranscript: String = ""
+    private var pendingLiveThoughtSummary: String = ""
+    private var pendingLiveRagTurnState: LiveRagTurnState = LiveRagTurnState()
+    private var latestLiveUsageMetadata: LiveUsageMetadata? = null
     private var lastSyncedResponseFontScalePercent: Int? = null
     
     // Track recording IDs currently being processed to prevent duplicate transcription
@@ -148,9 +173,12 @@ class PhoneAIService : Service() {
         ServiceBridge.updateServiceState(false)
         
         serviceScope.cancel()
-        liveSession?.release()
-        liveSession = null
+        liveCollectorJobs.forEach { it.cancel() }
+        liveCollectorJobs = emptyList()
+        liveCoordinator?.release()
+        liveCoordinator = null
         currentLiveTurnConversationId = null
+        clearLiveUsageSummary()
         bluetoothManager?.disconnect()
         cxrManager?.release()
         ttsService?.shutdown()
@@ -174,6 +202,7 @@ class PhoneAIService : Service() {
             
             // Validate model and provider compatibility
             val validatedSettings = validateAndCorrectSettings(settings)
+            latestValidatedSettings = validatedSettings
             
             // Use factory to create AI service
             aiService = createAiService(validatedSettings)
@@ -187,7 +216,11 @@ class PhoneAIService : Service() {
             sttService = createSttService(validatedSettings)
             Log.d(TAG, "Dedicated STT service created: ${sttService != null}, provider: ${validatedSettings.sttProvider}")
             
-            Log.d(TAG, "Using AI provider: ${validatedSettings.aiProvider}, model: ${validatedSettings.aiModelId}")
+            Log.d(
+                TAG,
+                "Using active assistant: ${validatedSettings.getEffectiveAssistantProvider()}, " +
+                    "model: ${validatedSettings.getEffectiveAssistantModelId()}"
+            )
             var lastAppliedSettings = validatedSettings
             
             // Monitor settings changes
@@ -195,17 +228,23 @@ class PhoneAIService : Service() {
                 settingsRepository.settingsFlow.collect { newSettings ->
                     Log.d(TAG, "Settings changed, updating services...")
                     val validatedNewSettings = validateAndCorrectSettings(newSettings)
+                    latestValidatedSettings = validatedNewSettings
                     if (PhoneSettingsSyncPolicy.requiresServiceRefresh(lastAppliedSettings, validatedNewSettings)) {
                         aiService = createAiService(validatedNewSettings)
                         speechService = createSpeechService(validatedNewSettings)
                         sttService = createSttService(validatedNewSettings)
-                        handleLiveModeTransition(validatedNewSettings)
                     }
+                    handleLiveModeTransition(validatedNewSettings)
                     syncSleepModeSetting(validatedNewSettings)
                     syncResponseFontScaleSetting(validatedNewSettings)
                     lastAppliedSettings = validatedNewSettings
                     
-                    Log.d(TAG, "Services updated: ${validatedNewSettings.aiProvider}, STT: ${validatedNewSettings.sttProvider}")
+                    Log.d(
+                        TAG,
+                        "Services updated: active assistant=${validatedNewSettings.getEffectiveAssistantProvider()}, " +
+                            "model=${validatedNewSettings.getEffectiveAssistantModelId()}, " +
+                            "STT=${validatedNewSettings.sttProvider}"
+                    )
                 }
             }
             
@@ -248,6 +287,7 @@ class PhoneAIService : Service() {
                             syncSleepModeSetting(settingsRepository.getSettings())
                             syncResponseFontScaleSetting(settingsRepository.getSettings(), force = true)
                         }
+                        latestValidatedSettings?.let { handleLiveModeTransition(it) }
                     }
                 } catch (e: Exception) {
                     Log.e(TAG, "Error in Bluetooth state collector", e)
@@ -389,6 +429,7 @@ class PhoneAIService : Service() {
         
         // Initialize CXR-M SDK (for Rokid glasses photo capture)
         initializeCxrSdk()
+        latestValidatedSettings?.let { handleLiveModeTransition(it) }
     }
     
     /**
@@ -580,26 +621,34 @@ class PhoneAIService : Service() {
         Log.d(TAG, "Received message from glasses: ${message.type}")
         
         when (message.type) {
+            MessageType.VOICE_DATA -> {
+                message.binaryData?.let { audioChunk ->
+                    liveCoordinator?.receiveGlassesAudioChunk(audioChunk)
+                }
+            }
             MessageType.VOICE_END -> {
-                // Voice input ended, audio data is in binaryData
-                message.binaryData?.let { audioData ->
+                val isLiveActive = liveCoordinator?.sessionState?.value == LiveSessionState.ACTIVE
+                val voiceEndAudio = message.binaryData
+                voiceEndAudio?.let { audioData ->
                     Log.d(TAG, "Processing voice data: ${audioData.size} bytes")
-                    
-                    // If Live mode is active, audio is already streamed in real-time.
-                    // VOICE_END only signals end-of-turn for the live session.
-                    if (liveSession != null && liveSession?.sessionState?.value == GeminiLiveSession.SessionState.ACTIVE) {
+
+                    if (isLiveActive) {
                         Log.d(TAG, "Live mode active, signaling end of turn")
-                        liveSession?.endOfTurn()
+                        liveCoordinator?.endOfTurn()
                     } else {
                         processVoiceData(audioData)
                     }
+                }
+
+                if (isLiveActive && (voiceEndAudio == null || voiceEndAudio.isEmpty())) {
+                    liveCoordinator?.endOfTurn()
                 }
             }
             MessageType.VOICE_START -> {
                 Log.d(TAG, "Voice recording started on glasses")
                 
                 // In Live mode, audio is streamed in real-time — no STT step needed
-                if (liveSession != null && liveSession?.sessionState?.value == GeminiLiveSession.SessionState.ACTIVE) {
+                if (liveCoordinator?.sessionState?.value == LiveSessionState.ACTIVE) {
                     Log.d(TAG, "Live mode active, audio streams directly to Gemini")
                     return
                 }
@@ -629,9 +678,9 @@ class PhoneAIService : Service() {
             // Receive real-time video frames from glasses and forward to Gemini Live Session
             MessageType.VIDEO_FRAME -> {
                 message.binaryData?.let { frameData ->
-                    if (liveSession != null && liveSession?.sessionState?.value == GeminiLiveSession.SessionState.ACTIVE) {
+                    if (liveCoordinator?.sessionState?.value == LiveSessionState.ACTIVE) {
                         Log.d(TAG, "Forwarding video frame to Live session: ${frameData.size} bytes")
-                        liveSession?.sendVideoFrame(frameData)
+                        liveCoordinator?.receiveVideoFrame(frameData)
                     } else {
                         Log.w(TAG, "Received VIDEO_FRAME but Live session is not active")
                     }
@@ -809,6 +858,10 @@ class PhoneAIService : Service() {
             
             // 1. Notify glasses: recognizing
             bluetoothManager?.sendMessage(Message.aiProcessing(getString(R.string.recognizing_speech)))
+            ServiceBridge.emitConversation(Message(
+                type = MessageType.AI_PROCESSING,
+                payload = getString(R.string.recognizing_speech)
+            ))
             
             // 2. Speech recognition - prefer dedicated STT service if available
             Log.d(TAG, "Starting speech recognition...")
@@ -829,6 +882,10 @@ class PhoneAIService : Service() {
                 is SpeechResult.Error -> {
                     Log.e(TAG, "Transcription error: ${transcriptResult.message}")
                     bluetoothManager?.sendMessage(Message.aiError(transcriptResult.message))
+                    ServiceBridge.emitConversation(Message(
+                        type = MessageType.AI_ERROR,
+                        payload = transcriptResult.message
+                    ))
                     // Check if error is API key related
                     if (transcriptResult.message.contains("API", ignoreCase = true) ||
                         transcriptResult.message.contains("key", ignoreCase = true) ||
@@ -841,6 +898,10 @@ class PhoneAIService : Service() {
                 null -> {
                     val errorMsg = getString(R.string.service_not_ready)
                     bluetoothManager?.sendMessage(Message.aiError(errorMsg))
+                    ServiceBridge.emitConversation(Message(
+                        type = MessageType.AI_ERROR,
+                        payload = errorMsg
+                    ))
                     notifyApiKeyMissing()
                     return
                 }
@@ -863,6 +924,10 @@ class PhoneAIService : Service() {
             
             // 4. Notify thinking
             bluetoothManager?.sendMessage(Message.aiProcessing(getString(R.string.thinking)))
+            ServiceBridge.emitConversation(Message(
+                type = MessageType.AI_PROCESSING,
+                payload = getString(R.string.thinking)
+            ))
             
             // 5. AI conversation / Docs routing
             Log.d(TAG, "Getting assistant response...")
@@ -925,165 +990,465 @@ class PhoneAIService : Service() {
             throw e  // Re-throw to properly propagate cancellation
         } catch (e: Exception) {
             Log.e(TAG, "Error processing voice data", e)
-            bluetoothManager?.sendMessage(Message.aiError(getString(R.string.processing_failed, e.message ?: "")))
+            val errorMessage = getString(R.string.processing_failed, e.message ?: "")
+            bluetoothManager?.sendMessage(Message.aiError(errorMessage))
+            ServiceBridge.emitConversation(Message(
+                type = MessageType.AI_ERROR,
+                payload = errorMessage
+            ))
         }
     }
     
     // ========== Gemini Live Mode ==========
     
     /**
-     * Handle provider transitions to/from Live mode.
+     * Handle Live mode transitions.
      * Called whenever settings change.
      */
     private fun handleLiveModeTransition(settings: ApiSettings) {
-        if (settings.aiProvider == AiProvider.GEMINI_LIVE) {
-            // Start Live session if not already active
-            if (liveSession == null || liveSession?.sessionState?.value == GeminiLiveSession.SessionState.IDLE
-                || liveSession?.sessionState?.value == GeminiLiveSession.SessionState.ERROR) {
-                startLiveSession(settings)
-            }
-        } else {
-            // Stop Live session if switching away from Live mode
-            if (liveSession != null) {
-                Log.d(TAG, "Switching away from Live mode, stopping session")
-                liveSession?.release()
-                liveSession = null
-                currentLiveTurnConversationId = null
-                
-                // Notify glasses that live session ended
-                serviceScope.launch {
-                    bluetoothManager?.sendMessage(Message(type = MessageType.LIVE_SESSION_END))
-                }
-            }
-        }
-    }
-    
-    /**
-     * Start a Gemini Live session for real-time bidirectional voice.
-     */
-    private fun startLiveSession(settings: ApiSettings) {
-        val apiKey = settings.geminiApiKey
-        if (apiKey.isBlank()) {
-            Log.e(TAG, "Cannot start Live session: Gemini API key not configured")
-            serviceScope.launch { notifyApiKeyMissing() }
+        if (!settings.liveModeEnabled) {
+            shutdownLiveCoordinator()
             return
         }
-        
-        Log.d(TAG, "Starting Gemini Live session")
-        
-        liveSession = GeminiLiveSession(
-            context = this,
-            apiKey = apiKey,
-            modelId = settings.aiModelId.ifBlank { "gemini-2.5-flash-preview-native-audio-dialog" },
-            systemPrompt = buildSystemPromptWithLanguage(settings.systemPrompt, settings.responseLanguage)
-        )
-        
-        // Collect Live session events
-        collectLiveSessionEvents()
-        
-        // Start the session
-        val started = liveSession?.start() ?: false
-        if (started) {
-            Log.d(TAG, "Live session started successfully")
+
+        if (settings.getGeminiApiKeys().isEmpty()) {
+            Log.e(TAG, "Cannot start Live session: Gemini API key not configured")
+            shutdownLiveCoordinator()
             serviceScope.launch {
-                bluetoothManager?.sendMessage(Message(type = MessageType.LIVE_SESSION_START))
+                notifyApiKeyMissing()
             }
-        } else {
-            Log.e(TAG, "Failed to start Live session")
+            return
         }
+
+        val coordinator = liveCoordinator ?: createLiveCoordinator()
+        coordinator.sync(settings, isGlassesConnected())
     }
-    
-    /**
-     * Collect event flows from the Live session and forward to glasses/UI.
-     */
-    private fun collectLiveSessionEvents() {
-        val session = liveSession ?: return
-        
-        // User speech transcription
-        serviceScope.launch {
-            session.inputTranscription.collect { text ->
-                Log.d(TAG, "Live input transcription: $text")
-                bluetoothManager?.sendMessage(Message(
-                    type = MessageType.LIVE_TRANSCRIPTION,
-                    payload = text
-                ))
-                ServiceBridge.emitConversation(Message(
-                    type = MessageType.USER_TRANSCRIPT,
-                    payload = text
-                ))
-                val settings = SettingsRepository.getInstance(this@PhoneAIService).getSettings()
-                val conversationId = prepareLiveTurnConversation(settings, text)
-                saveUserMessage(text, conversationId = conversationId)
-            }
-        }
-        
-        // AI response transcription
-        serviceScope.launch {
-            session.outputTranscription.collect { text ->
-                Log.d(TAG, "Live output transcription: $text")
-                bluetoothManager?.sendMessage(Message(
-                    type = MessageType.AI_RESPONSE_TEXT,
-                    payload = text
-                ))
-                ServiceBridge.emitConversation(Message(
-                    type = MessageType.AI_RESPONSE_TEXT,
-                    payload = text
-                ))
-                val settings = SettingsRepository.getInstance(this@PhoneAIService).getSettings()
-                val conversationId = prepareLiveTurnConversation(settings, text)
-                saveAssistantMessage(
-                    content = text,
-                    modelId = settings.aiModelId,
-                    settings = settings,
-                    conversationId = conversationId,
-                )
-            }
-        }
-        
-        // Turn complete
-        serviceScope.launch {
-            session.turnComplete.collect {
-                Log.d(TAG, "Live turn complete")
-                val settings = SettingsRepository.getInstance(this@PhoneAIService).getSettings()
-                if (settings.alwaysStartNewAiSession) {
-                    currentLiveTurnConversationId = null
-                    liveSession?.release()
-                    liveSession = null
-                    startLiveSession(settings)
-                }
-            }
-        }
-        
-        // Interrupted
-        serviceScope.launch {
-            session.interrupted.collect {
-                Log.d(TAG, "Live session interrupted by user")
-                currentLiveTurnConversationId = null
-            }
-        }
-        
-        // Session state changes
-        serviceScope.launch {
-            session.sessionState.collect { state ->
-                Log.d(TAG, "Live session state: $state")
-                when (state) {
-                    GeminiLiveSession.SessionState.ERROR -> {
-                        currentLiveTurnConversationId = null
-                        val error = session.errorMessage.value ?: "Live session error"
-                        Log.e(TAG, "Live session error: $error")
-                        serviceScope.launch {
-                            bluetoothManager?.sendMessage(Message.aiError(error))
-                            bluetoothManager?.sendMessage(Message(type = MessageType.LIVE_SESSION_END))
+
+    private fun createLiveCoordinator(): LiveSessionCoordinator {
+        val coordinator = LiveSessionCoordinator(serviceScope) { config: LiveSessionConfig ->
+            val settings = latestValidatedSettings ?: SettingsRepository.getInstance(this).getSettings()
+            val liveRagAdapter = if (config.liveRagEnabled) LiveRagToolAdapter(ragService) else null
+            val liveRagDisplayMode = config.liveRagDisplayMode
+            val extraToolDeclarations = buildLiveToolDeclarations(
+                googleSearchEnabled = config.googleSearchAvailableForAttempt,
+                liveRagDeclaration = liveRagAdapter?.let { LiveRagToolAdapter.declaration() }
+            )
+            GeminiLiveSession(
+                context = this,
+                apiKey = config.apiKey,
+                modelId = config.modelId,
+                systemPrompt = buildSystemPromptWithLanguage(config.systemPrompt, settings.responseLanguage),
+                liveVoiceName = config.liveVoiceName,
+                capturePhoneAudio = config.capturePhoneAudio,
+                playbackPhoneAudio = config.playbackPhoneAudio,
+                enableLongSession = config.liveLongSessionEnabled,
+                sessionResumptionHandle = config.sessionResumptionHandle,
+                thinkingLevel = config.liveThinkingLevel,
+                includeThoughtSummaries = config.liveThoughtSummariesEnabled,
+                extraToolDeclarations = extraToolDeclarations,
+                routerConfigurator = { router ->
+                    liveRagAdapter?.let { adapter ->
+                        router.registerHandler(LiveRagToolAdapter.FUNCTION_NAME) { call ->
+                            pendingLiveRagTurnState = pendingLiveRagTurnState.markToolInvoked()
+                            if (liveRagDisplayMode == LiveRagDisplayMode.RAG_RESULT_ONLY) {
+                                emitLiveRagTranscript(getString(R.string.live_rag_searching))
+                            }
+                            val result = adapter.execute(call, settings.toAnythingLlmSettings())
+                            pendingLiveRagTurnState = pendingLiveRagTurnState.applyToolResult(result)
+                            val ragDisplayText = pendingLiveRagTurnState.ragAnswerText
+                                ?: getString(R.string.live_rag_no_result)
+                            emitLiveRagTranscript(
+                                text = ragDisplayText,
+                                isFinal = true,
+                            )
+                            result
                         }
                     }
-                    GeminiLiveSession.SessionState.IDLE -> {
-                        // Session stopped
-                        currentLiveTurnConversationId = null
+                },
+            )
+        }
+        liveCoordinator = coordinator
+        collectLiveCoordinatorEvents(coordinator)
+        return coordinator
+    }
+
+    private fun collectLiveCoordinatorEvents(coordinator: LiveSessionCoordinator) {
+        liveCollectorJobs.forEach { it.cancel() }
+        liveCollectorJobs = listOf(
+            serviceScope.launch {
+                coordinator.userTranscription.collect { text ->
+                    if (pendingLiveUserTranscript.isBlank()) {
+                        resetPendingLiveRagTurnState()
+                        val settings = latestValidatedSettings ?: SettingsRepository.getInstance(this@PhoneAIService).getSettings()
+                        val effectiveRagDisplayMode = resolveEffectiveLiveRagDisplayMode(
+                            liveRagEnabled = settings.liveRagEnabled,
+                            configuredMode = settings.liveRagDisplayMode,
+                        )
+                        if (settings.liveRagEnabled && effectiveRagDisplayMode == LiveRagDisplayMode.SPLIT_LIVE_AND_RAG) {
+                            emitLiveRagTranscript(getString(R.string.live_rag_searching))
+                        }
                     }
-                    else -> { /* CONNECTING, ACTIVE, PAUSED, DISCONNECTING */ }
+                    if (
+                        LiveUsageSummaryRetention.shouldClearForIncomingUserTranscript(
+                            hasPersistedUsageSummary = latestLiveUsageMetadata != null,
+                            currentUserTranscript = pendingLiveUserTranscript,
+                            incomingTranscript = text,
+                        )
+                    ) {
+                        clearLiveUsageSummary()
+                    }
+                    pendingLiveThoughtSummary = ""
+                    pendingLiveUserTranscript = LiveTranscriptAccumulator.merge(
+                        current = pendingLiveUserTranscript,
+                        incoming = text,
+                    )
+                    bluetoothManager?.sendMessage(
+                        Message(
+                            type = MessageType.LIVE_TRANSCRIPTION,
+                            payload = LiveTranscriptPayload(
+                                role = LiveTranscriptRole.USER,
+                                text = pendingLiveUserTranscript,
+                            ).toPayloadString()
+                        )
+                    )
+                    ServiceBridge.emitConversation(
+                        Message(
+                            type = MessageType.LIVE_TRANSCRIPTION,
+                            payload = LiveTranscriptPayload(
+                                role = LiveTranscriptRole.USER,
+                                text = pendingLiveUserTranscript,
+                            ).toPayloadString()
+                        )
+                    )
+                }
+            },
+            serviceScope.launch {
+                coordinator.assistantTranscription.collect { text ->
+                    pendingLiveAssistantTranscript = LiveTranscriptAccumulator.merge(
+                        current = pendingLiveAssistantTranscript,
+                        incoming = text,
+                    )
+                    bluetoothManager?.sendMessage(
+                        Message(
+                            type = MessageType.LIVE_TRANSCRIPTION,
+                            payload = LiveTranscriptPayload(
+                                role = LiveTranscriptRole.ASSISTANT,
+                                text = pendingLiveAssistantTranscript,
+                            ).toPayloadString()
+                        )
+                    )
+                    ServiceBridge.emitConversation(
+                        Message(
+                            type = MessageType.LIVE_TRANSCRIPTION,
+                            payload = LiveTranscriptPayload(
+                                role = LiveTranscriptRole.ASSISTANT,
+                                text = pendingLiveAssistantTranscript,
+                            ).toPayloadString()
+                        )
+                    )
+                }
+            },
+            serviceScope.launch {
+                coordinator.assistantThoughtSummary.collect { text ->
+                    pendingLiveThoughtSummary = LiveTranscriptAccumulator.merge(
+                        current = pendingLiveThoughtSummary,
+                        incoming = text,
+                    )
+                    bluetoothManager?.sendMessage(
+                        Message(
+                            type = MessageType.LIVE_TRANSCRIPTION,
+                            payload = LiveTranscriptPayload(
+                                role = LiveTranscriptRole.THINKING,
+                                text = pendingLiveThoughtSummary,
+                            ).toPayloadString()
+                        )
+                    )
+                    ServiceBridge.emitConversation(
+                        Message(
+                            type = MessageType.AI_PROCESSING,
+                            payload = getString(
+                                R.string.live_thought_summary_status,
+                                pendingLiveThoughtSummary
+                            )
+                        )
+                    )
+                }
+            },
+            serviceScope.launch {
+                coordinator.assistantAudio.collect { audioData ->
+                    if (coordinator.shouldForwardAudioToGlasses) {
+                        bluetoothManager?.sendMessage(
+                            Message(
+                                type = MessageType.LIVE_AUDIO_CHUNK,
+                                binaryData = audioData
+                            )
+                        )
+                    }
+                }
+            },
+            serviceScope.launch {
+                coordinator.usageMetadata.collect { metadata ->
+                    publishLiveUsageSummary(metadata)
+                }
+            },
+            serviceScope.launch {
+                coordinator.sessionStatus.collect { status ->
+                    ServiceBridge.updateLiveSessionStatus(status)
+                }
+            },
+            serviceScope.launch {
+                coordinator.turnComplete.collect {
+                    pendingLiveThoughtSummary = ""
+                    val settings = latestValidatedSettings ?: SettingsRepository.getInstance(this@PhoneAIService).getSettings()
+                    val effectiveRagDisplayMode = resolveEffectiveLiveRagDisplayMode(
+                        liveRagEnabled = settings.liveRagEnabled,
+                        configuredMode = settings.liveRagDisplayMode,
+                    )
+                    when {
+                        settings.liveRagEnabled &&
+                            effectiveRagDisplayMode == LiveRagDisplayMode.SPLIT_LIVE_AND_RAG -> {
+                            emitLiveRagTranscript(
+                                text = pendingLiveRagTurnState.resolveSplitPanels(
+                                    assistantText = pendingLiveAssistantTranscript,
+                                    searchingLabel = getString(R.string.live_rag_searching),
+                                    noResultLabel = getString(R.string.live_rag_no_result),
+                                    turnComplete = true,
+                                ).rightText,
+                                isFinal = true,
+                            )
+                        }
+                        else -> {
+                            val finalText = pendingLiveRagTurnState.resolveFinalText(
+                                displayMode = effectiveRagDisplayMode,
+                                assistantText = pendingLiveAssistantTranscript,
+                                noResultLabel = getString(R.string.live_rag_no_result),
+                            )
+                            if (!finalText.isNullOrBlank()) {
+                                bluetoothManager?.sendMessage(Message.aiResponseText(finalText))
+                            }
+                        }
+                    }
+                    persistCompletedLiveTurn()
+                }
+            },
+            serviceScope.launch {
+                coordinator.interrupted.collect {
+                    Log.d(TAG, "Live session interrupted by user")
+                    if (coordinator.shouldForwardAudioToGlasses) {
+                        bluetoothManager?.sendMessage(
+                            Message(type = MessageType.LIVE_AUDIO_STOP)
+                        )
+                    }
+                    pendingLiveThoughtSummary = ""
+                    pendingLiveAssistantTranscript = ""
+                    currentLiveTurnConversationId = null
+                    resetPendingLiveRagTurnState()
+                    ServiceBridge.emitConversation(
+                        Message(type = MessageType.AI_PROCESSING, payload = null)
+                    )
+                }
+            },
+            serviceScope.launch {
+                coordinator.sessionNotices.collect { notice ->
+                    Log.w(TAG, "Live session notice: $notice")
+                    ServiceBridge.emitConversation(
+                        Message(
+                            type = MessageType.AI_PROCESSING,
+                            payload = notice
+                        )
+                    )
+                }
+            },
+            serviceScope.launch {
+                coordinator.errorMessage.collect { errorMessage ->
+                    if (errorMessage.isNullOrBlank()) {
+                        return@collect
+                    }
+                    handleLiveSessionError(errorMessage)
+                }
+            },
+            serviceScope.launch {
+                coordinator.sessionState.collect { state ->
+                    handleLiveSessionState(state)
                 }
             }
+        )
+    }
+
+    private suspend fun persistCompletedLiveTurn() {
+        Log.d(TAG, "Live turn complete")
+        val settings = latestValidatedSettings ?: SettingsRepository.getInstance(this).getSettings()
+        val titleSeed = pendingLiveUserTranscript.ifBlank {
+            pendingLiveAssistantTranscript.ifBlank { "Live turn" }
         }
+        val conversationId = prepareLiveTurnConversation(settings, titleSeed)
+
+        if (pendingLiveUserTranscript.isNotBlank()) {
+            saveUserMessage(pendingLiveUserTranscript, conversationId = conversationId)
+        }
+
+        if (pendingLiveAssistantTranscript.isNotBlank()) {
+            saveAssistantMessage(
+                content = pendingLiveAssistantTranscript,
+                modelId = "gemini-live",
+                settings = settings,
+                conversationId = conversationId,
+            )
+        }
+
+        pendingLiveUserTranscript = ""
+        pendingLiveAssistantTranscript = ""
+        if (settings.alwaysStartNewAiSession) {
+            currentLiveTurnConversationId = null
+        }
+        resetPendingLiveRagTurnState()
+    }
+
+    private fun handleLiveSessionState(state: LiveSessionState) {
+        Log.d(TAG, "Live session state: $state")
+        when (state) {
+            LiveSessionState.ACTIVE -> {
+                if (!liveSessionAnnouncedToGlasses) {
+                    liveSessionAnnouncedToGlasses = true
+                    val settings = latestValidatedSettings ?: SettingsRepository.getInstance(this).getSettings()
+                    serviceScope.launch {
+                        bluetoothManager?.sendMessage(
+                            Message(
+                                type = MessageType.LIVE_SESSION_START,
+                                payload = buildLiveSessionStartPayload(settings)
+                            )
+                        )
+                    }
+                }
+            }
+
+            LiveSessionState.CONNECTING,
+            LiveSessionState.RECONNECTING -> {
+                if (LiveUsageSummaryRetention.shouldClearForSessionState(state)) {
+                    clearLiveUsageSummary()
+                }
+            }
+
+            LiveSessionState.ERROR -> {
+                currentLiveTurnConversationId = null
+                pendingLiveUserTranscript = ""
+                pendingLiveAssistantTranscript = ""
+                resetPendingLiveRagTurnState()
+                serviceScope.launch {
+                    val presentation = resolveLiveErrorPresentation(liveCoordinator?.errorMessage?.value)
+                    bluetoothManager?.sendMessage(Message.aiError(presentation.userMessage))
+                    if (liveSessionAnnouncedToGlasses) {
+                        bluetoothManager?.sendMessage(Message(type = MessageType.LIVE_SESSION_END))
+                    }
+                }
+                liveSessionAnnouncedToGlasses = false
+            }
+
+            LiveSessionState.IDLE, LiveSessionState.STOPPING -> {
+                currentLiveTurnConversationId = null
+                pendingLiveUserTranscript = ""
+                pendingLiveAssistantTranscript = ""
+                resetPendingLiveRagTurnState()
+                if (liveSessionAnnouncedToGlasses) {
+                    liveSessionAnnouncedToGlasses = false
+                    serviceScope.launch {
+                        bluetoothManager?.sendMessage(Message(type = MessageType.LIVE_SESSION_END))
+                    }
+                }
+            }
+
+            else -> Unit
+        }
+    }
+
+    private fun shutdownLiveCoordinator() {
+        liveCollectorJobs.forEach { it.cancel() }
+        liveCollectorJobs = emptyList()
+        liveCoordinator?.release()
+        liveCoordinator = null
+        ServiceBridge.updateLiveSessionStatus(null)
+        currentLiveTurnConversationId = null
+        pendingLiveUserTranscript = ""
+        pendingLiveAssistantTranscript = ""
+        resetPendingLiveRagTurnState()
+        clearLiveUsageSummary()
+
+        if (liveSessionAnnouncedToGlasses) {
+            liveSessionAnnouncedToGlasses = false
+            serviceScope.launch {
+                bluetoothManager?.sendMessage(Message(type = MessageType.LIVE_SESSION_END))
+            }
+        }
+    }
+
+    private suspend fun handleLiveSessionError(rawError: String) {
+        val presentation = resolveLiveErrorPresentation(rawError)
+        ServiceBridge.emitConversation(
+            Message(
+                type = MessageType.AI_ERROR,
+                payload = presentation.userMessage
+            )
+        )
+        if (presentation.shouldNotifyApiKeyMissing) {
+            notifyApiKeyMissing()
+        }
+    }
+
+    private fun publishLiveUsageSummary(metadata: LiveUsageMetadata) {
+        if (metadata == latestLiveUsageMetadata) {
+            return
+        }
+
+        latestLiveUsageMetadata = metadata
+        val estimatedModelCost = GeminiLiveCostEstimator.estimate(metadata)
+        ServiceBridge.updateLiveUsageSummary(
+            metadata.toStatusSummary(estimatedModelCostUsd = estimatedModelCost?.usd)
+        )
+        val logSummary = metadata.toLogSummary(estimatedModelCostUsd = estimatedModelCost?.usd)
+        val logSuffix = estimatedModelCost?.let { ", fallback=${it.usedFallbackHeuristics}" }.orEmpty()
+        LogManager.getInstance(this).i(TAG, "Live usage updated: $logSummary$logSuffix")
+    }
+
+    private fun clearLiveUsageSummary() {
+        latestLiveUsageMetadata = null
+        ServiceBridge.updateLiveUsageSummary(null)
+    }
+
+    private fun resetPendingLiveRagTurnState() {
+        pendingLiveRagTurnState = LiveRagTurnState()
+    }
+
+    private suspend fun emitLiveRagTranscript(
+        text: String,
+        isFinal: Boolean = false,
+    ) {
+        bluetoothManager?.sendMessage(
+            Message(
+                type = MessageType.LIVE_TRANSCRIPTION,
+                payload = LiveTranscriptPayload(
+                    role = LiveTranscriptRole.RAG,
+                    text = text,
+                    isFinal = isFinal,
+                ).toPayloadString()
+            )
+        )
+    }
+
+    private fun isGlassesConnected(): Boolean {
+        return bluetoothManager?.connectionState?.value == BluetoothConnectionState.CONNECTED
+    }
+
+    private fun buildLiveSessionStartPayload(settings: ApiSettings): String {
+        val effectiveRagDisplayMode = resolveEffectiveLiveRagDisplayMode(
+            liveRagEnabled = settings.liveRagEnabled,
+            configuredMode = settings.liveRagDisplayMode,
+        )
+        return JSONObject()
+            .put("cameraMode", settings.liveCameraMode.name)
+            .put("cameraIntervalSec", settings.liveCameraIntervalSec)
+            .put("liveRagEnabled", settings.liveRagEnabled)
+            .put("ragDisplayMode", effectiveRagDisplayMode.name)
+            .toString()
     }
     
     /**

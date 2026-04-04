@@ -60,6 +60,10 @@ android {
     }
 
     buildTypes {
+        debug {
+            applicationIdSuffix = ".livehub"
+            versionNameSuffix = "-livehub"
+        }
         release {
             isMinifyEnabled = true
             proguardFiles(

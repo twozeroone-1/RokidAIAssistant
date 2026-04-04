@@ -297,6 +297,26 @@ class BluetoothSppClientTest {
         assertThat(result).isFalse()
     }
 
+    @Test
+    fun `sendVoiceData sends VOICE_DATA message with binary payload`() = scope.runTest {
+        val outputBytes = ByteArrayOutputStream()
+
+        setConnectionState(BluetoothClientState.CONNECTED)
+
+        val osField = BluetoothSppClient::class.java.getDeclaredField("outputStream")
+        osField.isAccessible = true
+        osField.set(client, outputBytes)
+
+        val payload = byteArrayOf(1, 2, 3, 4)
+        val result = client.sendVoiceData(payload)
+
+        assertThat(result).isTrue()
+        val written = outputBytes.toString(Charsets.UTF_8.name())
+        assertThat(written).contains("\"type\":${MessageType.VOICE_DATA.code}")
+        assertThat(Message.fromJson(written.trim())?.binaryData?.contentEquals(payload))
+            .isEqualTo(true)
+    }
+
     // ==================== handleDisconnection (auto-reconnect) ====================
 
     @Test
