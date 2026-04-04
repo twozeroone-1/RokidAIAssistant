@@ -12,6 +12,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.core.view.WindowCompat
@@ -27,6 +28,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -44,9 +46,9 @@ import com.example.rokidglasses.viewmodel.GlassesLivePanelContent
 import com.example.rokidglasses.viewmodel.GlassesViewModel
 import com.example.rokidglasses.viewmodel.deriveDisplayStage
 import com.example.rokidglasses.viewmodel.LiveRagManualScrollCommand
-import com.example.rokidglasses.viewmodel.LIVE_RAG_MANUAL_SCROLL_STEP_PX
 import com.example.rokidglasses.viewmodel.resolveLivePanelContent
 import com.example.rokidglasses.viewmodel.resolveLiveRagAutoScrollDurationMillis
+import com.example.rokidglasses.viewmodel.resolveLiveRagManualScrollTarget
 import com.example.rokidglasses.viewmodel.responseFontScaleMultiplier
 import com.example.rokidglasses.viewmodel.toSleepModeSnapshot
 import kotlinx.coroutines.delay
@@ -713,6 +715,7 @@ private fun SplitPanel(
     manualScrollCommands: Flow<LiveRagManualScrollCommand>?,
 ) {
     val scrollState = rememberScrollState()
+    var viewportHeightPx by remember { mutableStateOf(0) }
 
     LaunchedEffect(text, autoScroll, manualScroll, autoScrollSpeedLevel) {
         if (text.isBlank()) {
@@ -743,25 +746,32 @@ private fun SplitPanel(
         delay(500)
         scrollState.animateScrollTo(
             value = maxValue,
-            animationSpec = tween(durationMillis = durationMillis),
+            animationSpec = tween(
+                durationMillis = durationMillis,
+                easing = LinearEasing,
+            ),
         )
     }
 
-    LaunchedEffect(manualScroll, manualScrollCommands) {
+    LaunchedEffect(manualScroll, manualScrollCommands, viewportHeightPx) {
         if (!manualScroll || manualScrollCommands == null) {
             return@LaunchedEffect
         }
 
         manualScrollCommands.collect { command ->
-            val delta = when (command) {
-                LiveRagManualScrollCommand.UP -> -LIVE_RAG_MANUAL_SCROLL_STEP_PX
-                LiveRagManualScrollCommand.DOWN -> LIVE_RAG_MANUAL_SCROLL_STEP_PX
-            }
-            val targetValue = (scrollState.value + delta).coerceIn(0, scrollState.maxValue)
-            if (targetValue != scrollState.value) {
+            val targetValue = resolveLiveRagManualScrollTarget(
+                currentScrollPx = scrollState.value,
+                maxScrollPx = scrollState.maxValue,
+                viewportHeightPx = viewportHeightPx,
+                command = command,
+            )
+            if (targetValue != null) {
                 scrollState.animateScrollTo(
                     value = targetValue,
-                    animationSpec = tween(durationMillis = 180),
+                    animationSpec = tween(
+                        durationMillis = 220,
+                        easing = LinearEasing,
+                    ),
                 )
             }
         }
@@ -782,6 +792,7 @@ private fun SplitPanel(
             modifier = Modifier
                 .fillMaxWidth()
                 .heightIn(max = 220.dp)
+                .onSizeChanged { viewportHeightPx = it.height }
                 .verticalScroll(scrollState)
         ) {
             Text(

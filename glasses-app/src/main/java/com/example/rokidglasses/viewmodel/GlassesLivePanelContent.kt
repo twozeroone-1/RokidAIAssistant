@@ -20,8 +20,6 @@ enum class LiveRagManualScrollCommand {
     DOWN,
 }
 
-internal const val LIVE_RAG_MANUAL_SCROLL_STEP_PX = 96
-
 fun resolveLiveRagAutoScrollDurationMillis(
     maxScrollPx: Int,
     speedLevel: Int,
@@ -30,13 +28,35 @@ fun resolveLiveRagAutoScrollDurationMillis(
         return null
     }
 
-    return when (speedLevel.coerceIn(0, 4)) {
-        0 -> (maxScrollPx * 38).coerceIn(8000, 28000)
-        1 -> (maxScrollPx * 30).coerceIn(6000, 22000)
-        2 -> (maxScrollPx * 22).coerceIn(4000, 16000)
-        3 -> (maxScrollPx * 16).coerceIn(3000, 12000)
-        else -> (maxScrollPx * 12).coerceIn(2500, 9000)
+    val pixelsPerSecond = when (speedLevel.coerceIn(0, 4)) {
+        0 -> 12
+        1 -> 18
+        2 -> 26
+        3 -> 36
+        else -> 48
     }
+
+    return ((maxScrollPx * 1000.0) / pixelsPerSecond).toInt()
+        .coerceIn(4500, 60000)
+}
+
+fun resolveLiveRagManualScrollTarget(
+    currentScrollPx: Int,
+    maxScrollPx: Int,
+    viewportHeightPx: Int,
+    command: LiveRagManualScrollCommand,
+): Int? {
+    if (maxScrollPx <= 0 || viewportHeightPx <= 0) {
+        return null
+    }
+
+    val pageStep = viewportHeightPx.coerceAtLeast(1)
+    val delta = when (command) {
+        LiveRagManualScrollCommand.UP -> -pageStep
+        LiveRagManualScrollCommand.DOWN -> pageStep
+    }
+    val target = (currentScrollPx + delta).coerceIn(0, maxScrollPx)
+    return target.takeIf { it != currentScrollPx }
 }
 
 fun resolveLivePanelContent(

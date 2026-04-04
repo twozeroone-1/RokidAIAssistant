@@ -110,4 +110,38 @@ class GlassesLivePanelContentTest {
         assertThat(slowDuration).isGreaterThan(normalDuration)
         assertThat(normalDuration).isGreaterThan(fastDuration)
     }
+
+    @Test
+    fun `very slow auto scroll stays slow enough for a short panel`() {
+        val duration = resolveLiveRagAutoScrollDurationMillis(
+            maxScrollPx = 220,
+            speedLevel = 0,
+        )
+
+        assertThat(duration).isAtLeast(15000)
+    }
+
+    @Test
+    fun `manual scroll advances by one visible page`() {
+        val target = resolveLiveRagManualScrollTarget(
+            currentScrollPx = 0,
+            maxScrollPx = 800,
+            viewportHeightPx = 220,
+            command = LiveRagManualScrollCommand.DOWN,
+        )
+
+        assertThat(target).isEqualTo(220)
+    }
+
+    @Test
+    fun `manual scroll clamps to max scroll when near the end`() {
+        val target = resolveLiveRagManualScrollTarget(
+            currentScrollPx = 700,
+            maxScrollPx = 800,
+            viewportHeightPx = 220,
+            command = LiveRagManualScrollCommand.DOWN,
+        )
+
+        assertThat(target).isEqualTo(800)
+    }
 }
