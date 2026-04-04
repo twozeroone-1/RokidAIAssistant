@@ -78,10 +78,12 @@ class PhoneGlassesProtocolIntegrationTest {
         val start = Message(type = MessageType.REMOTE_RECORD_START, payload = "rec-123")
         val stop = Message(type = MessageType.REMOTE_RECORD_STOP)
         val liveText = Message(type = MessageType.LIVE_TRANSCRIPTION, payload = "hello world")
+        val liveToggle = Message(type = enumValueOf("LIVE_SESSION_TOGGLE_REQUEST"))
 
         val parsedStart = Message.fromJson(start.toJson())
         val parsedStop = Message.fromJson(stop.toJson())
         val parsedLive = Message.fromJson(liveText.toJson())
+        val parsedToggle = Message.fromJson(liveToggle.toJson())
 
         assertThat(parsedStart!!.type).isEqualTo(MessageType.REMOTE_RECORD_START)
         assertThat(parsedStart.payload).isEqualTo("rec-123")
@@ -91,6 +93,9 @@ class PhoneGlassesProtocolIntegrationTest {
 
         assertThat(parsedLive!!.type).isEqualTo(MessageType.LIVE_TRANSCRIPTION)
         assertThat(parsedLive.payload).isEqualTo("hello world")
+
+        assertThat(parsedToggle!!.type.name).isEqualTo("LIVE_SESSION_TOGGLE_REQUEST")
+        assertThat(parsedToggle.payload).isNull()
     }
 
     @Test

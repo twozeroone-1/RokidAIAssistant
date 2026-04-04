@@ -8,9 +8,11 @@ import android.os.IBinder
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.example.rokidcommon.Constants
+import com.example.rokidcommon.protocol.LiveControlInputSource
 import com.example.rokidcommon.protocol.Message
 import com.example.rokidcommon.protocol.MessageType
 import com.example.rokidcommon.protocol.LiveRagDisplayMode
+import com.example.rokidcommon.protocol.LiveSessionControlPayload
 import com.example.rokidcommon.protocol.LiveTranscriptPayload
 import com.example.rokidcommon.protocol.LiveTranscriptRole
 import com.example.rokidcommon.protocol.resolveEffectiveLiveRagDisplayMode
@@ -22,6 +24,7 @@ import com.example.rokidphone.data.AnswerMode
 import com.example.rokidphone.data.AiProvider
 import com.example.rokidphone.data.ApiSettings
 import com.example.rokidphone.data.AvailableModels
+import com.example.rokidphone.data.LiveInputSource
 import com.example.rokidphone.data.SettingsRepository
 import com.example.rokidphone.data.SettingsValidationResult
 import com.example.rokidphone.data.db.ConversationRepository
@@ -72,7 +75,6 @@ import com.rokid.cxr.client.utils.ValueUtil
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
-import org.json.JSONObject
 
 /**
  * Phone AI Service
@@ -280,12 +282,14 @@ class PhoneAIService : Service() {
                         
                         // Initialize CXR Bluetooth when SPP connected
                         if (state == BluetoothConnectionState.CONNECTED) {
+                            val settings = latestValidatedSettings ?: settingsRepository.getSettings()
                             bluetoothManager?.connectedDevice?.let { device ->
                                 Log.d(TAG, "Initializing CXR Bluetooth with device: ${device.name}")
                                 cxrManager?.initBluetooth(device)
                             }
-                            syncSleepModeSetting(settingsRepository.getSettings())
-                            syncResponseFontScaleSetting(settingsRepository.getSettings(), force = true)
+                            syncSleepModeSetting(settings)
+                            syncResponseFontScaleSetting(settings, force = true)
+                            syncLiveSessionStateToGlasses(settings)
                         }
                         latestValidatedSettings?.let { handleLiveModeTransition(it) }
                     }
@@ -695,6 +699,10 @@ class PhoneAIService : Service() {
                         payload = text
                     ))
                 }
+            }
+            MessageType.LIVE_SESSION_TOGGLE_REQUEST -> {
+                Log.d(TAG, "Received live session toggle request from glasses")
+                handleGlassesLiveSessionToggleRequest()
             }
             else -> { 
                 Log.d(TAG, "Unhandled message type: ${message.type}")
@@ -1312,11 +1320,9 @@ class PhoneAIService : Service() {
                     liveSessionAnnouncedToGlasses = true
                     val settings = latestValidatedSettings ?: SettingsRepository.getInstance(this).getSettings()
                     serviceScope.launch {
-                        bluetoothManager?.sendMessage(
-                            Message(
-                                type = MessageType.LIVE_SESSION_START,
-                                payload = buildLiveSessionStartPayload(settings)
-                            )
+                        sendLiveSessionStateToGlasses(
+                            settings = settings,
+                            sessionActive = true,
                         )
                     }
                 }
@@ -1338,7 +1344,11 @@ class PhoneAIService : Service() {
                     val presentation = resolveLiveErrorPresentation(liveCoordinator?.errorMessage?.value)
                     bluetoothManager?.sendMessage(Message.aiError(presentation.userMessage))
                     if (liveSessionAnnouncedToGlasses) {
-                        bluetoothManager?.sendMessage(Message(type = MessageType.LIVE_SESSION_END))
+                        val settings = latestValidatedSettings ?: SettingsRepository.getInstance(this@PhoneAIService).getSettings()
+                        sendLiveSessionStateToGlasses(
+                            settings = settings,
+                            sessionActive = false,
+                        )
                     }
                 }
                 liveSessionAnnouncedToGlasses = false
@@ -1352,7 +1362,11 @@ class PhoneAIService : Service() {
                 if (liveSessionAnnouncedToGlasses) {
                     liveSessionAnnouncedToGlasses = false
                     serviceScope.launch {
-                        bluetoothManager?.sendMessage(Message(type = MessageType.LIVE_SESSION_END))
+                        val settings = latestValidatedSettings ?: SettingsRepository.getInstance(this@PhoneAIService).getSettings()
+                        sendLiveSessionStateToGlasses(
+                            settings = settings,
+                            sessionActive = false,
+                        )
                     }
                 }
             }
@@ -1376,7 +1390,11 @@ class PhoneAIService : Service() {
         if (liveSessionAnnouncedToGlasses) {
             liveSessionAnnouncedToGlasses = false
             serviceScope.launch {
-                bluetoothManager?.sendMessage(Message(type = MessageType.LIVE_SESSION_END))
+                val settings = latestValidatedSettings ?: SettingsRepository.getInstance(this@PhoneAIService).getSettings()
+                sendLiveSessionStateToGlasses(
+                    settings = settings,
+                    sessionActive = false,
+                )
             }
         }
     }
@@ -1438,17 +1456,98 @@ class PhoneAIService : Service() {
         return bluetoothManager?.connectionState?.value == BluetoothConnectionState.CONNECTED
     }
 
-    private fun buildLiveSessionStartPayload(settings: ApiSettings): String {
+    private fun buildLiveSessionControlPayload(
+        settings: ApiSettings,
+        sessionActive: Boolean,
+    ): String {
         val effectiveRagDisplayMode = resolveEffectiveLiveRagDisplayMode(
             liveRagEnabled = settings.liveRagEnabled,
             configuredMode = settings.liveRagDisplayMode,
         )
-        return JSONObject()
-            .put("cameraMode", settings.liveCameraMode.name)
-            .put("cameraIntervalSec", settings.liveCameraIntervalSec)
-            .put("liveRagEnabled", settings.liveRagEnabled)
-            .put("ragDisplayMode", effectiveRagDisplayMode.name)
-            .toString()
+        return LiveSessionControlPayload(
+            sessionActive = sessionActive,
+            liveModeEnabled = settings.liveModeEnabled,
+            effectiveInputSource = resolveLiveControlInputSource(settings),
+            cameraMode = settings.liveCameraMode.name,
+            cameraIntervalSec = settings.liveCameraIntervalSec,
+            liveRagEnabled = settings.liveRagEnabled,
+            ragDisplayMode = effectiveRagDisplayMode,
+        ).toPayloadString()
+    }
+
+    private fun resolveLiveControlInputSource(settings: ApiSettings): LiveControlInputSource {
+        return when (
+            liveCoordinator?.sessionStatus?.value?.inputSource ?: when (settings.liveInputSource) {
+                LiveInputSource.AUTO -> if (isGlassesConnected()) LiveInputSource.GLASSES else LiveInputSource.PHONE
+                else -> settings.liveInputSource
+            }
+        ) {
+            LiveInputSource.PHONE -> LiveControlInputSource.PHONE
+            LiveInputSource.GLASSES -> LiveControlInputSource.GLASSES
+            LiveInputSource.AUTO -> LiveControlInputSource.UNKNOWN
+        }
+    }
+
+    private suspend fun sendLiveSessionStateToGlasses(
+        settings: ApiSettings,
+        sessionActive: Boolean,
+    ) {
+        bluetoothManager?.sendMessage(
+            Message(
+                type = if (sessionActive) {
+                    MessageType.LIVE_SESSION_START
+                } else {
+                    MessageType.LIVE_SESSION_END
+                },
+                payload = buildLiveSessionControlPayload(
+                    settings = settings,
+                    sessionActive = sessionActive,
+                )
+            )
+        )
+    }
+
+    private suspend fun syncLiveSessionStateToGlasses(settings: ApiSettings) {
+        if (!isGlassesConnected()) {
+            return
+        }
+
+        val sessionState = liveCoordinator?.sessionState?.value
+        val sessionActive = sessionState == LiveSessionState.ACTIVE
+        if (!settings.liveModeEnabled && !liveSessionAnnouncedToGlasses && !sessionActive) {
+            return
+        }
+
+        sendLiveSessionStateToGlasses(
+            settings = settings,
+            sessionActive = sessionActive,
+        )
+        liveSessionAnnouncedToGlasses = sessionActive
+    }
+
+    private suspend fun handleGlassesLiveSessionToggleRequest() {
+        val settings = latestValidatedSettings ?: SettingsRepository.getInstance(this).getSettings()
+        val sessionActive = liveCoordinator?.sessionState?.value == LiveSessionState.ACTIVE
+        val livePayload = LiveSessionControlPayload.fromPayload(
+            buildLiveSessionControlPayload(
+                settings = settings,
+                sessionActive = sessionActive,
+            )
+        ) ?: return
+
+        if (!livePayload.canToggleFromGlasses) {
+            sendLiveSessionStateToGlasses(
+                settings = settings,
+                sessionActive = sessionActive,
+            )
+            return
+        }
+
+        if (sessionActive) {
+            shutdownLiveCoordinator()
+        } else {
+            handleLiveModeTransition(settings)
+        }
     }
     
     /**

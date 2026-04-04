@@ -50,6 +50,7 @@ enum class MessageType(val code: Int) {
     VIDEO_FRAME(0x53),           // Glasses -> Phone: Video frame for Live mode
     LIVE_AUDIO_CHUNK(0x54),      // Phone -> Glasses: Live audio output chunk
     LIVE_AUDIO_STOP(0x55),       // Phone -> Glasses: Stop active live audio playback immediately
+    LIVE_SESSION_TOGGLE_REQUEST(0x56), // Glasses -> Phone: Toggle phone-input live session
 
     // System control (0xF0-0xFF)
     SYSTEM_STATUS(0xF0),         // Bidirectional: System status

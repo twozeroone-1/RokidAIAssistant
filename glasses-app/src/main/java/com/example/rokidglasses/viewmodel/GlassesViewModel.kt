@@ -17,7 +17,9 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.example.rokidcommon.Constants
 import com.example.rokidcommon.protocol.ConnectionState
+import com.example.rokidcommon.protocol.LiveControlInputSource
 import com.example.rokidcommon.protocol.LiveRagDisplayMode
+import com.example.rokidcommon.protocol.LiveSessionControlPayload
 import com.example.rokidcommon.protocol.Message
 import com.example.rokidcommon.protocol.MessageType
 import com.example.rokidcommon.protocol.LiveTranscriptPayload
@@ -70,7 +72,9 @@ data class GlassesUiState(
     val isCapturingPhoto: Boolean = false,
     val photoTransferProgress: Float = 0f,
     // Gemini Live mode state
+    val liveModeEnabled: Boolean = false,
     val isLiveModeActive: Boolean = false,
+    val liveInputSource: LiveControlInputSource = LiveControlInputSource.UNKNOWN,
     val liveTranscription: String = "",
     val liveRagEnabled: Boolean = false,
     val liveRagDisplayMode: LiveRagDisplayMode = LiveRagDisplayMode.RAG_RESULT_ONLY,
@@ -243,30 +247,53 @@ class GlassesViewModel(
         viewModelScope.launch {
             bluetoothClient.connectionState.collect { state ->
                 Log.d(TAG, "Bluetooth state changed: $state")
+                val clearLiveOutput = state != BluetoothClientState.CONNECTED
+                if (clearLiveOutput) {
+                    liveCameraMode = LiveCameraStreamingMode.OFF
+                    stopVideoStreaming()
+                    stopLiveAudioPlayback()
+                }
                 val connectionState = when (state) {
                     BluetoothClientState.DISCONNECTED -> ConnectionState.DISCONNECTED
                     BluetoothClientState.CONNECTING -> ConnectionState.CONNECTING
                     BluetoothClientState.CONNECTED -> ConnectionState.CONNECTED
                 }
                 
-                _uiState.update { it.copy(
-                    bluetoothState = state,
-                    connectionState = connectionState,
-                    isConnected = state == BluetoothClientState.CONNECTED,
-                    isSendingInput = false,
-                    isAwaitingAnalysis = false,
-                    hasVisibleOutput = false,
-                    displayText = when (state) {
-                        BluetoothClientState.DISCONNECTED -> context.getString(R.string.not_connected)
-                        BluetoothClientState.CONNECTING -> context.getString(R.string.connecting_status)
-                        BluetoothClientState.CONNECTED -> context.getString(R.string.connected_ready)
-                    },
-                    hintText = when (state) {
-                        BluetoothClientState.DISCONNECTED -> context.getString(R.string.please_connect_phone)
-                        BluetoothClientState.CONNECTING -> context.getString(R.string.please_wait)
-                        BluetoothClientState.CONNECTED -> context.getString(R.string.tap_touchpad_start)
+                _uiState.update { current ->
+                    val nextState = current.copy(
+                        bluetoothState = state,
+                        connectionState = connectionState,
+                        isConnected = state == BluetoothClientState.CONNECTED,
+                        isSendingInput = false,
+                        isAwaitingAnalysis = false,
+                        hasVisibleOutput = false,
+                        displayUsesResponseFontScale = false,
+                        liveTranscription = if (clearLiveOutput) "" else current.liveTranscription,
+                        liveAssistantText = if (clearLiveOutput) "" else current.liveAssistantText,
+                        liveRagText = if (clearLiveOutput) "" else current.liveRagText,
+                    )
+
+                    when (state) {
+                        BluetoothClientState.DISCONNECTED -> nextState.copy(
+                            displayText = context.getString(R.string.not_connected),
+                            hintText = context.getString(R.string.please_connect_phone),
+                        )
+
+                        BluetoothClientState.CONNECTING -> nextState.copy(
+                            displayText = context.getString(R.string.connecting_status),
+                            hintText = context.getString(R.string.please_wait),
+                        )
+
+                        BluetoothClientState.CONNECTED -> withIdlePrompt(
+                            state = nextState.copy(
+                                displayText = context.getString(R.string.connected_ready),
+                                hintText = context.getString(R.string.tap_touchpad_start),
+                            ),
+                            defaultDisplayText = context.getString(R.string.connected_ready),
+                            defaultHintText = context.getString(R.string.tap_touchpad_start),
+                        )
                     }
-                ) }
+                }
             }
         }
         
@@ -642,7 +669,7 @@ class GlassesViewModel(
                         aiResponse = finalAssistantText,
                         liveAssistantText = finalAssistantText,
                         hasVisibleOutput = finalAssistantText.isNotBlank() || it.liveRagText.isNotBlank(),
-                        displayUsesResponseFontScale = false,
+                        displayUsesResponseFontScale = true,
                         isPaginated = false,
                         currentPage = 0,
                         totalPages = 1,
@@ -692,14 +719,19 @@ class GlassesViewModel(
             }
             
             MessageType.DISPLAY_CLEAR -> {
-                _uiState.update { it.copy(
-                    isSendingInput = false,
-                    isAwaitingAnalysis = false,
-                    hasVisibleOutput = false,
-                    displayUsesResponseFontScale = false,
-                    displayText = "",
-                    hintText = context.getString(R.string.tap_touchpad_start)
-                ) }
+                _uiState.update {
+                    withIdlePrompt(
+                        state = it.copy(
+                            isSendingInput = false,
+                            isAwaitingAnalysis = false,
+                            hasVisibleOutput = false,
+                            displayUsesResponseFontScale = false,
+                            displayText = "",
+                        ),
+                        defaultDisplayText = "",
+                        defaultHintText = context.getString(R.string.tap_touchpad_start),
+                    )
+                }
             }
 
             MessageType.SLEEP_MODE_CONFIG -> {
@@ -737,19 +769,40 @@ class GlassesViewModel(
             MessageType.LIVE_SESSION_START -> {
                 // Phone started Live mode
                 Log.d(TAG, "Live session started by phone")
+                val liveSessionPayload = resolveLiveSessionControlPayload(
+                    rawPayload = message.payload,
+                    sessionActive = true,
+                )
                 isLiveModeActive = true
-                applyLiveSessionConfig(message.payload)
-                _uiState.update { it.copy(
-                    isLiveModeActive = true,
-                    displayUsesResponseFontScale = false,
-                    displayText = "🎙️ Live mode activated",
-                    hintText = "Real-time voice conversation...",
-                    liveTranscription = "",
-                    liveRagEnabled = it.liveRagEnabled,
-                    liveAssistantText = "",
-                    liveRagText = "",
-                    hasVisibleOutput = true
-                ) }
+                applyLiveSessionConfig(liveSessionPayload)
+                _uiState.update {
+                    withIdlePrompt(
+                        state = it.copy(
+                            liveModeEnabled = liveSessionPayload.liveModeEnabled,
+                            isLiveModeActive = true,
+                            liveInputSource = liveSessionPayload.effectiveInputSource,
+                            displayUsesResponseFontScale = false,
+                            liveTranscription = "",
+                            liveRagEnabled = liveSessionPayload.liveRagEnabled,
+                            liveAssistantText = "",
+                            liveRagText = "",
+                            liveRagDisplayMode = liveSessionPayload.ragDisplayMode,
+                            hasVisibleOutput = !liveSessionPayload.canToggleFromGlasses,
+                            displayText = if (liveSessionPayload.canToggleFromGlasses) {
+                                ""
+                            } else {
+                                "🎙️ Live mode activated"
+                            },
+                            hintText = if (liveSessionPayload.canToggleFromGlasses) {
+                                ""
+                            } else {
+                                "Real-time voice conversation..."
+                            },
+                        ),
+                        defaultDisplayText = "🎙️ Live mode activated",
+                        defaultHintText = "Real-time voice conversation...",
+                    )
+                }
                 if (liveCameraMode == LiveCameraStreamingMode.INTERVAL ||
                     liveCameraMode == LiveCameraStreamingMode.REALTIME) {
                     startVideoStreaming()
@@ -759,22 +812,35 @@ class GlassesViewModel(
             MessageType.LIVE_SESSION_END -> {
                 // Phone ended Live mode
                 Log.d(TAG, "Live session ended by phone")
+                val liveSessionPayload = resolveLiveSessionControlPayload(
+                    rawPayload = message.payload,
+                    sessionActive = false,
+                )
                 isLiveModeActive = false
                 liveCameraMode = LiveCameraStreamingMode.OFF
                 stopVideoStreaming()
                 stopLiveAudioPlayback()
-                _uiState.update { it.copy(
-                    isLiveModeActive = false,
-                    displayUsesResponseFontScale = false,
-                    displayText = "Live mode ended",
-                    hintText = context.getString(R.string.tap_touchpad_start),
-                    liveTranscription = "",
-                    liveRagEnabled = false,
-                    liveAssistantText = "",
-                    liveRagText = "",
-                    liveRagDisplayMode = LiveRagDisplayMode.RAG_RESULT_ONLY,
-                    hasVisibleOutput = true
-                ) }
+                applyLiveSessionConfig(liveSessionPayload)
+                _uiState.update {
+                    withIdlePrompt(
+                        state = it.copy(
+                            liveModeEnabled = liveSessionPayload.liveModeEnabled,
+                            isLiveModeActive = false,
+                            liveInputSource = liveSessionPayload.effectiveInputSource,
+                            displayUsesResponseFontScale = false,
+                            liveTranscription = "",
+                            liveRagEnabled = liveSessionPayload.liveRagEnabled,
+                            liveAssistantText = "",
+                            liveRagText = "",
+                            liveRagDisplayMode = liveSessionPayload.ragDisplayMode,
+                            hasVisibleOutput = false,
+                            displayText = "",
+                            hintText = "",
+                        ),
+                        defaultDisplayText = context.getString(R.string.tap_touchpad_start),
+                        defaultHintText = context.getString(R.string.tap_touchpad_record),
+                    )
+                }
             }
             
             MessageType.LIVE_TRANSCRIPTION -> {
@@ -795,7 +861,7 @@ class GlassesViewModel(
                                 userTranscript = text,
                                 liveTranscription = text,
                                 hasVisibleOutput = text.isNotBlank(),
-                                displayUsesResponseFontScale = false,
+                                displayUsesResponseFontScale = true,
                                 displayText = if (
                                     shouldKeepLiveDisplayText(
                                         isLiveModeActive = state.isLiveModeActive,
@@ -817,7 +883,7 @@ class GlassesViewModel(
                         _uiState.update { it.copy(
                             liveTranscription = text,
                             hasVisibleOutput = text.isNotBlank(),
-                            displayUsesResponseFontScale = false,
+                            displayUsesResponseFontScale = true,
                             displayText = if (
                                 shouldKeepLiveDisplayText(
                                     isLiveModeActive = it.isLiveModeActive,
@@ -840,7 +906,7 @@ class GlassesViewModel(
                             liveTranscription = text,
                             liveAssistantText = text,
                             hasVisibleOutput = text.isNotBlank() || it.liveRagText.isNotBlank(),
-                            displayUsesResponseFontScale = false,
+                            displayUsesResponseFontScale = true,
                             displayText = if (
                                 shouldKeepLiveDisplayText(
                                     isLiveModeActive = it.isLiveModeActive,
@@ -865,7 +931,7 @@ class GlassesViewModel(
                                 state.copy(
                                     liveRagText = text,
                                     hasVisibleOutput = state.liveAssistantText.isNotBlank() || text.isNotBlank(),
-                                    displayUsesResponseFontScale = false,
+                                    displayUsesResponseFontScale = true,
                                     displayText = if (
                                         state.isLiveModeActive &&
                                         effectiveMode == LiveRagDisplayMode.SPLIT_LIVE_AND_RAG
@@ -1025,12 +1091,14 @@ class GlassesViewModel(
         }
     }
 
-    private fun applyLiveSessionConfig(payload: String?) {
-        if (payload.isNullOrBlank()) {
+    private fun applyLiveSessionConfig(payload: LiveSessionControlPayload) {
+        if (payload.cameraMode.isNullOrBlank()) {
             liveCameraMode = LiveCameraStreamingMode.REALTIME
             videoFrameIntervalMs = 1000L
             _uiState.update {
                 it.copy(
+                    liveModeEnabled = payload.liveModeEnabled,
+                    liveInputSource = payload.effectiveInputSource,
                     liveRagEnabled = false,
                     liveRagDisplayMode = LiveRagDisplayMode.RAG_RESULT_ONLY,
                 )
@@ -1039,33 +1107,36 @@ class GlassesViewModel(
         }
 
         try {
-            val json = JSONObject(payload)
-            liveCameraMode = when (json.optString("cameraMode")) {
+            liveCameraMode = when (payload.cameraMode) {
                 "OFF" -> LiveCameraStreamingMode.OFF
                 "MANUAL" -> LiveCameraStreamingMode.MANUAL
                 "INTERVAL" -> LiveCameraStreamingMode.INTERVAL
                 "REALTIME" -> LiveCameraStreamingMode.REALTIME
                 else -> LiveCameraStreamingMode.REALTIME
             }
-            val intervalSec = json.optInt("cameraIntervalSec", 1).coerceAtLeast(1)
+            val intervalSec = (payload.cameraIntervalSec ?: 1).coerceAtLeast(1)
             videoFrameIntervalMs = intervalSec * 1000L
-            val liveRagEnabled = json.optBoolean("liveRagEnabled", false)
+            val liveRagEnabled = payload.liveRagEnabled
             val ragDisplayMode = resolveEffectiveLiveRagDisplayMode(
                 liveRagEnabled = liveRagEnabled,
-                configuredMode = LiveRagDisplayMode.fromRaw(json.optString("ragDisplayMode")),
+                configuredMode = payload.ragDisplayMode,
             )
             _uiState.update {
                 it.copy(
+                    liveModeEnabled = payload.liveModeEnabled,
+                    liveInputSource = payload.effectiveInputSource,
                     liveRagEnabled = liveRagEnabled,
                     liveRagDisplayMode = ragDisplayMode,
                 )
             }
         } catch (e: Exception) {
-            Log.w(TAG, "Failed to parse live session config: ${e.message}")
+            Log.w(TAG, "Failed to apply live session config: ${e.message}")
             liveCameraMode = LiveCameraStreamingMode.REALTIME
             videoFrameIntervalMs = 1000L
             _uiState.update {
                 it.copy(
+                    liveModeEnabled = payload.liveModeEnabled,
+                    liveInputSource = payload.effectiveInputSource,
                     liveRagEnabled = false,
                     liveRagDisplayMode = LiveRagDisplayMode.RAG_RESULT_ONLY,
                 )
@@ -1184,16 +1255,22 @@ class GlassesViewModel(
      */
     fun dismissPagination() {
         resetPagination()
-        _uiState.update { it.copy(
-            isProcessing = false,
-            isSendingInput = false,
-            isAwaitingAnalysis = false,
-            hasVisibleOutput = false,
-            liveAssistantText = "",
-            liveRagText = "",
-            displayText = context.getString(R.string.tap_touchpad_start),
-            hintText = context.getString(R.string.tap_touchpad_record)
-        ) }
+        _uiState.update {
+            withIdlePrompt(
+                state = it.copy(
+                    isProcessing = false,
+                    isSendingInput = false,
+                    isAwaitingAnalysis = false,
+                    hasVisibleOutput = false,
+                    liveAssistantText = "",
+                    liveRagText = "",
+                    displayText = context.getString(R.string.tap_touchpad_start),
+                    hintText = context.getString(R.string.tap_touchpad_record),
+                ),
+                defaultDisplayText = context.getString(R.string.tap_touchpad_start),
+                defaultHintText = context.getString(R.string.tap_touchpad_record),
+            )
+        }
     }
 
     fun dismissOutput() {
@@ -1203,10 +1280,57 @@ class GlassesViewModel(
     fun handlePrimaryAction() {
         val state = _uiState.value
         when (resolvePrimaryAction(state)) {
+            PrimaryActionOutcome.TOGGLE_LIVE_SESSION -> togglePhoneLiveSession()
             PrimaryActionOutcome.NEXT_PAGE -> nextPage()
             PrimaryActionOutcome.DISMISS_OUTPUT -> dismissOutput()
             PrimaryActionOutcome.TOGGLE_RECORDING -> toggleRecording()
         }
+    }
+
+    private fun togglePhoneLiveSession() {
+        viewModelScope.launch {
+            bluetoothClient.sendMessage(
+                Message(type = MessageType.LIVE_SESSION_TOGGLE_REQUEST)
+            )
+        }
+    }
+
+    private fun resolveLiveSessionControlPayload(
+        rawPayload: String?,
+        sessionActive: Boolean,
+    ): LiveSessionControlPayload {
+        val parsed = LiveSessionControlPayload.fromPayload(rawPayload)
+        val hasLiveModeEnabled = rawPayload?.contains("\"liveModeEnabled\"") == true
+
+        return (parsed ?: LiveSessionControlPayload(
+            sessionActive = sessionActive,
+            liveModeEnabled = sessionActive,
+        )).copy(
+            sessionActive = sessionActive,
+            liveModeEnabled = if (hasLiveModeEnabled) {
+                parsed?.liveModeEnabled ?: false
+            } else {
+                sessionActive
+            },
+        )
+    }
+
+    private fun withIdlePrompt(
+        state: GlassesUiState,
+        defaultDisplayText: String,
+        defaultHintText: String,
+    ): GlassesUiState {
+        val prompt = resolveIdlePrompt(
+            state = state,
+            defaultDisplayText = defaultDisplayText,
+            defaultHintText = defaultHintText,
+            livePhoneActiveHint = context.getString(R.string.live_phone_speak_hint),
+            livePhoneResumeHint = context.getString(R.string.live_phone_resume_hint),
+        )
+        return state.copy(
+            displayText = prompt.displayText,
+            hintText = prompt.hintText,
+        )
     }
     
     /**

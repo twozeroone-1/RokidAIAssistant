@@ -1,9 +1,15 @@
 package com.example.rokidglasses.viewmodel
 
+import com.example.rokidcommon.protocol.LiveControlInputSource
 import com.google.common.truth.Truth.assertThat
 import org.junit.Test
 
 class GlassesPrimaryActionTest {
+
+    @Test
+    fun `live session toggle action exists for phone live control`() {
+        assertThat(PrimaryActionOutcome.entries.map { it.name }).contains("TOGGLE_LIVE_SESSION")
+    }
 
     @Test
     fun `visible output without pagination requires dismiss before next action`() {
@@ -51,4 +57,42 @@ class GlassesPrimaryActionTest {
         assertThat(resolvePrimaryAction(state)).isEqualTo(PrimaryActionOutcome.TOGGLE_RECORDING)
     }
 
+    @Test
+    fun `live active toggles live session instead of dismissing output regardless of input source`() {
+        val state = GlassesUiState(
+            liveModeEnabled = true,
+            isLiveModeActive = true,
+            liveInputSource = LiveControlInputSource.GLASSES,
+            hasVisibleOutput = true,
+            isPaginated = false,
+        )
+
+        assertThat(resolvePrimaryAction(state).name).isEqualTo("TOGGLE_LIVE_SESSION")
+    }
+
+    @Test
+    fun `live paused toggles live session instead of starting legacy recording regardless of input source`() {
+        val state = GlassesUiState(
+            liveModeEnabled = true,
+            isLiveModeActive = false,
+            liveInputSource = LiveControlInputSource.UNKNOWN,
+            hasVisibleOutput = false,
+            isPaginated = false,
+        )
+
+        assertThat(resolvePrimaryAction(state).name).isEqualTo("TOGGLE_LIVE_SESSION")
+    }
+
+    @Test
+    fun `non live idle keeps existing recording control`() {
+        val state = GlassesUiState(
+            liveModeEnabled = false,
+            isLiveModeActive = false,
+            liveInputSource = LiveControlInputSource.GLASSES,
+            hasVisibleOutput = false,
+            isPaginated = false,
+        )
+
+        assertThat(resolvePrimaryAction(state)).isEqualTo(PrimaryActionOutcome.TOGGLE_RECORDING)
+    }
 }
