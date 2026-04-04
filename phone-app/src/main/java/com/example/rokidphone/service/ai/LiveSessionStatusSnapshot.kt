@@ -7,6 +7,7 @@ import com.example.rokidphone.data.LiveThinkingLevel
 data class LiveSessionStatusSnapshot(
     val inputSource: LiveInputSource,
     val outputTarget: LiveOutputTarget,
+    val audioOutputEnabled: Boolean,
     val liveRagEnabled: Boolean,
     val googleSearchEnabledInSettings: Boolean,
     val googleSearchAvailableForSession: Boolean,

@@ -119,6 +119,57 @@ class LiveSessionCoordinatorTest {
     }
 
     @Test
+    fun `sync with glasses input and glasses output keeps capture on glasses and forwards audio back to glasses`() {
+        coordinator.sync(
+            liveSettings {
+                copy(
+                    liveInputSource = LiveInputSource.GLASSES,
+                    liveOutputTarget = LiveOutputTarget.GLASSES,
+                )
+            },
+            glassesConnected = true
+        )
+
+        assertThat(latestConfig().capturePhoneAudio).isFalse()
+        assertThat(latestConfig().playbackPhoneAudio).isFalse()
+        assertThat(coordinator.shouldForwardAudioToGlasses).isTrue()
+    }
+
+    @Test
+    fun `sync with phone output keeps playback local to phone app without forwarding`() {
+        coordinator.sync(
+            liveSettings {
+                copy(
+                    liveInputSource = LiveInputSource.GLASSES,
+                    liveOutputTarget = LiveOutputTarget.PHONE,
+                )
+            },
+            glassesConnected = true
+        )
+
+        assertThat(latestConfig().capturePhoneAudio).isFalse()
+        assertThat(latestConfig().playbackPhoneAudio).isTrue()
+        assertThat(coordinator.shouldForwardAudioToGlasses).isFalse()
+    }
+
+    @Test
+    fun `sync disables all live audio output paths when live answer audio playback is off`() {
+        coordinator.sync(
+            liveSettings {
+                copy(
+                    liveAnswerAudioEnabled = false,
+                    liveInputSource = LiveInputSource.PHONE,
+                    liveOutputTarget = LiveOutputTarget.BOTH,
+                )
+            },
+            glassesConnected = true
+        )
+
+        assertThat(latestConfig().playbackPhoneAudio).isFalse()
+        assertThat(coordinator.shouldForwardAudioToGlasses).isFalse()
+    }
+
+    @Test
     fun `sync passes barge in disabled as no interruption activity handling`() {
         coordinator.sync(
             liveSettings {
@@ -236,6 +287,7 @@ class LiveSessionCoordinatorTest {
             LiveSessionStatusSnapshot(
                 inputSource = LiveInputSource.GLASSES,
                 outputTarget = LiveOutputTarget.GLASSES,
+                audioOutputEnabled = true,
                 liveRagEnabled = true,
                 googleSearchEnabledInSettings = true,
                 googleSearchAvailableForSession = true,

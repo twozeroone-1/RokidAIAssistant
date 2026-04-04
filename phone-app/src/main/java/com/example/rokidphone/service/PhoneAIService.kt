@@ -1031,6 +1031,12 @@ class PhoneAIService : Service() {
 
         val coordinator = liveCoordinator ?: createLiveCoordinator()
         coordinator.sync(settings, isGlassesConnected())
+
+        if (!settings.liveAnswerAudioEnabled) {
+            serviceScope.launch {
+                bluetoothManager?.sendMessage(Message(type = MessageType.LIVE_AUDIO_STOP))
+            }
+        }
     }
 
     private fun createLiveCoordinator(): LiveSessionCoordinator {

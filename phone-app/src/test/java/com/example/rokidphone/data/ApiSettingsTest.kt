@@ -28,6 +28,7 @@ class ApiSettingsTest {
 
         assertThat(settings.liveModeEnabled).isFalse()
         assertThat(settings.liveRagEnabled).isFalse()
+        assertThat(settings.liveAnswerAudioEnabled).isTrue()
         assertThat(settings.liveBargeInEnabled).isTrue()
         assertThat(settings.liveLongSessionEnabled).isFalse()
         assertThat(settings.liveGoogleSearchEnabled).isFalse()

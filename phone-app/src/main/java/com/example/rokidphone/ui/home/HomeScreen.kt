@@ -758,7 +758,7 @@ private fun LiveSessionStatusPanel(status: LiveSessionStatusSnapshot) {
     val routeSummary = stringResource(
         R.string.live_status_route_summary,
         status.inputSource.toLiveSourceLabel(),
-        status.outputTarget.toLiveOutputLabel(),
+        status.toLiveOutputSummaryLabel(),
     )
     val capabilitySummary = stringResource(
         R.string.live_status_capability_summary,
@@ -816,19 +816,28 @@ private fun LiveSessionStatusPanel(status: LiveSessionStatusSnapshot) {
 @Composable
 private fun LiveInputSource.toLiveSourceLabel(): String {
     return when (this) {
-        LiveInputSource.PHONE -> stringResource(R.string.filter_phone)
-        LiveInputSource.GLASSES -> stringResource(R.string.filter_glasses)
-        LiveInputSource.AUTO -> stringResource(R.string.live_status_auto)
+        LiveInputSource.PHONE -> stringResource(R.string.live_input_source_phone_label)
+        LiveInputSource.GLASSES -> stringResource(R.string.live_input_source_glasses_label)
+        LiveInputSource.AUTO -> stringResource(R.string.live_input_source_auto_label)
     }
 }
 
 @Composable
 private fun LiveOutputTarget.toLiveOutputLabel(): String {
     return when (this) {
-        LiveOutputTarget.PHONE -> stringResource(R.string.filter_phone)
-        LiveOutputTarget.GLASSES -> stringResource(R.string.filter_glasses)
-        LiveOutputTarget.BOTH -> stringResource(R.string.live_status_both)
-        LiveOutputTarget.AUTO -> stringResource(R.string.live_status_auto)
+        LiveOutputTarget.PHONE -> stringResource(R.string.live_output_target_phone_label)
+        LiveOutputTarget.GLASSES -> stringResource(R.string.live_output_target_glasses_label)
+        LiveOutputTarget.BOTH -> stringResource(R.string.live_output_target_both_label)
+        LiveOutputTarget.AUTO -> stringResource(R.string.live_output_target_auto_label)
+    }
+}
+
+@Composable
+private fun LiveSessionStatusSnapshot.toLiveOutputSummaryLabel(): String {
+    return if (audioOutputEnabled) {
+        outputTarget.toLiveOutputLabel()
+    } else {
+        stringResource(R.string.live_output_target_off_label)
     }
 }
 

@@ -193,14 +193,17 @@ class LiveSessionCoordinator(
 
         val resolvedInput = resolveInputSource(settings.liveInputSource, glassesConnected)
         val resolvedOutput = resolveOutputTarget(settings.liveOutputTarget, glassesConnected)
+        val liveAudioOutputEnabled = settings.liveAnswerAudioEnabled
         val baseConfig = LiveSessionBaseConfig(
             apiKeys = settings.getGeminiApiKeys(),
             modelId = resolveLiveModelId(settings.aiModelId),
             systemPrompt = settings.systemPrompt,
             liveVoiceName = settings.getLiveVoice().voiceName,
             capturePhoneAudio = resolvedInput == LiveInputSource.PHONE,
-            playbackPhoneAudio = resolvedOutput == LiveOutputTarget.PHONE ||
-                resolvedOutput == LiveOutputTarget.BOTH,
+            playbackPhoneAudio = liveAudioOutputEnabled && (
+                resolvedOutput == LiveOutputTarget.PHONE ||
+                    resolvedOutput == LiveOutputTarget.BOTH
+                ),
             liveCameraMode = settings.liveCameraMode,
             liveCameraIntervalSec = settings.liveCameraIntervalSec,
             liveRagEnabled = settings.liveRagEnabled,
@@ -217,8 +220,10 @@ class LiveSessionCoordinator(
 
         effectiveInputSource = resolvedInput
         effectiveOutputTarget = resolvedOutput
-        shouldForwardAudioToGlasses = resolvedOutput == LiveOutputTarget.GLASSES ||
-            resolvedOutput == LiveOutputTarget.BOTH
+        shouldForwardAudioToGlasses = liveAudioOutputEnabled && (
+            resolvedOutput == LiveOutputTarget.GLASSES ||
+                resolvedOutput == LiveOutputTarget.BOTH
+            )
 
         if (baseConfig == activeBaseConfig && activeSession != null) {
             updateSessionStatus(activeConfig)
@@ -599,6 +604,7 @@ class LiveSessionCoordinator(
             LiveSessionStatusSnapshot(
                 inputSource = effectiveInputSource,
                 outputTarget = effectiveOutputTarget,
+                audioOutputEnabled = it.playbackPhoneAudio || shouldForwardAudioToGlasses,
                 liveRagEnabled = it.liveRagEnabled,
                 googleSearchEnabledInSettings = it.liveGoogleSearchEnabled,
                 googleSearchAvailableForSession = it.googleSearchAvailableForAttempt,

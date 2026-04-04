@@ -254,6 +254,7 @@ class PhoneViewModelTest {
             val snapshot = LiveSessionStatusSnapshot(
                 inputSource = LiveInputSource.PHONE,
                 outputTarget = LiveOutputTarget.GLASSES,
+                audioOutputEnabled = true,
                 liveRagEnabled = true,
                 googleSearchEnabledInSettings = true,
                 googleSearchAvailableForSession = false,

@@ -139,6 +139,7 @@ class SettingsRepositoryTest {
             ApiSettings(
                 liveModeEnabled = true,
                 liveRagEnabled = true,
+                liveAnswerAudioEnabled = false,
                 liveBargeInEnabled = false,
                 liveLongSessionEnabled = true,
                 liveGoogleSearchEnabled = true,
@@ -159,6 +160,7 @@ class SettingsRepositoryTest {
 
         assertThat(reloadedSettings.liveModeEnabled).isTrue()
         assertThat(reloadedSettings.liveRagEnabled).isTrue()
+        assertThat(reloadedSettings.liveAnswerAudioEnabled).isFalse()
         assertThat(reloadedSettings.liveBargeInEnabled).isFalse()
         assertThat(reloadedSettings.liveLongSessionEnabled).isTrue()
         assertThat(reloadedSettings.liveGoogleSearchEnabled).isTrue()

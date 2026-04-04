@@ -47,8 +47,10 @@
     <string name="live_rag_auto_scroll_speed_normal">Normal</string>
     <string name="live_rag_auto_scroll_speed_fast">Fast</string>
     <string name="live_rag_auto_scroll_speed_very_fast">Very fast</string>
+    <string name="live_answer_audio">Play live answer audio</string>
+    <string name="live_answer_audio_description">Play Gemini Live answer audio. Turn this off to keep realtime conversation text-only.</string>
     <string name="live_barge_in">Interrupt assistant while speaking</string>
-    <string name="live_barge_in_description">When enabled, your speech immediately stops the current Gemini Live reply and starts a new turn.</string>
+    <string name="live_barge_in_description">When enabled, your speech immediately stops the current Gemini Live reply and starts a new turn. If live answer audio is also on, speaker output can leak back into the microphone and cause an audio loop.</string>
     <string name="live_voice">Live voice</string>
     <string name="live_voice_description">Choose the Gemini native audio voice used for realtime answers.</string>
     <string name="live_long_session">Keep long sessions alive</string>
@@ -69,6 +71,15 @@
     <string name="live_input_source">Live Input Source</string>
     <string name="live_output_target">Live Output Target</string>
     <string name="live_status_route_summary">Input %1$s · Output %2$s</string>
+    <string name="live_input_source_auto_label">Auto</string>
+    <string name="live_input_source_glasses_label">Glasses</string>
+    <string name="live_input_source_phone_label">Phone</string>
+    <string name="live_output_target_auto_label">Auto</string>
+    <string name="live_output_target_glasses_label">Forward to glasses</string>
+    <string name="live_output_target_phone_label">Phone app playback</string>
+    <string name="live_output_target_both_label">Phone app + glasses</string>
+    <string name="live_output_target_off_label">Audio off</string>
+    <string name="live_output_target_disabled_summary">Disabled while live answer audio playback is off</string>
     <string name="live_status_capability_summary">Search %1$s · RAG %2$s · Thinking %3$s</string>
     <string name="live_status_auto">Auto</string>
     <string name="live_status_both">Both</string>
@@ -121,7 +132,7 @@
     <string name="tts_settings_description">Configure text-to-speech output. Edge TTS provides high-quality neural voices for natural-sounding speech in many languages.</string>
     <string name="tts_settings_note">Edge TTS requires an internet connection. If unavailable, the app will automatically fall back to the Android system TTS engine.</string>
     <string name="tts_auto_read_answers_title">Read answers aloud</string>
-    <string name="tts_auto_read_answers_desc">Automatically play assistant answers over TTS. Test Voice still works when this is off.</string>
+    <string name="tts_auto_read_answers_desc">Automatically play regular assistant answers over TTS. Gemini Live conversation audio uses a separate setting. Test Voice still works when this is off.</string>
     <string name="tts_engine">TTS Engine</string>
     <string name="tts_provider_edge">Microsoft Edge TTS</string>
     <string name="tts_provider_edge_desc">High-quality neural voices (requires internet)</string>

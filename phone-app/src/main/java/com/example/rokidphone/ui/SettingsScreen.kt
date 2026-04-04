@@ -66,17 +66,17 @@ fun SettingsScreen(
 
     val liveInputLabel = remember(settings.liveInputSource) {
         when (settings.liveInputSource) {
-            LiveInputSource.AUTO -> "Auto"
-            LiveInputSource.GLASSES -> "Glasses"
-            LiveInputSource.PHONE -> "Phone"
+            LiveInputSource.AUTO -> context.getString(R.string.live_input_source_auto_label)
+            LiveInputSource.GLASSES -> context.getString(R.string.live_input_source_glasses_label)
+            LiveInputSource.PHONE -> context.getString(R.string.live_input_source_phone_label)
         }
     }
     val liveOutputLabel = remember(settings.liveOutputTarget) {
         when (settings.liveOutputTarget) {
-            LiveOutputTarget.AUTO -> "Auto"
-            LiveOutputTarget.GLASSES -> "Glasses"
-            LiveOutputTarget.PHONE -> "Phone"
-            LiveOutputTarget.BOTH -> "Both"
+            LiveOutputTarget.AUTO -> context.getString(R.string.live_output_target_auto_label)
+            LiveOutputTarget.GLASSES -> context.getString(R.string.live_output_target_glasses_label)
+            LiveOutputTarget.PHONE -> context.getString(R.string.live_output_target_phone_label)
+            LiveOutputTarget.BOTH -> context.getString(R.string.live_output_target_both_label)
         }
     }
     val liveCameraModeLabel = remember(settings.liveCameraMode) {
@@ -235,14 +235,25 @@ fun SettingsScreen(
                             }
                         }
 
-                        HorizontalDivider()
+                    HorizontalDivider()
 
-                        SettingsRowWithSwitch(
-                            title = stringResource(R.string.live_barge_in),
-                            subtitle = stringResource(R.string.live_barge_in_description),
-                            checked = settings.liveBargeInEnabled,
-                            onCheckedChange = { enabled ->
-                                onSettingsChange(settings.copy(liveBargeInEnabled = enabled))
+                    SettingsRowWithSwitch(
+                        title = stringResource(R.string.live_answer_audio),
+                        subtitle = stringResource(R.string.live_answer_audio_description),
+                        checked = settings.liveAnswerAudioEnabled,
+                        onCheckedChange = { enabled ->
+                            onSettingsChange(settings.copy(liveAnswerAudioEnabled = enabled))
+                        }
+                    )
+
+                    HorizontalDivider()
+
+                    SettingsRowWithSwitch(
+                        title = stringResource(R.string.live_barge_in),
+                        subtitle = stringResource(R.string.live_barge_in_description),
+                        checked = settings.liveBargeInEnabled,
+                        onCheckedChange = { enabled ->
+                            onSettingsChange(settings.copy(liveBargeInEnabled = enabled))
                             }
                         )
 
@@ -307,8 +318,13 @@ fun SettingsScreen(
 
                         SettingsRow(
                             title = stringResource(R.string.live_output_target),
-                            subtitle = liveOutputLabel,
-                            onClick = { showLiveOutputDialog = true }
+                            subtitle = if (settings.liveAnswerAudioEnabled) {
+                                liveOutputLabel
+                            } else {
+                                stringResource(R.string.live_output_target_disabled_summary)
+                            },
+                            onClick = { showLiveOutputDialog = true },
+                            enabled = settings.liveAnswerAudioEnabled
                         )
 
                         HorizontalDivider()
@@ -772,9 +788,15 @@ fun SettingsScreen(
         SimpleSelectionDialog(
             title = stringResource(R.string.live_input_source),
             options = listOf(
-                "Auto" to { onSettingsChange(settings.copy(liveInputSource = LiveInputSource.AUTO)) },
-                "Glasses" to { onSettingsChange(settings.copy(liveInputSource = LiveInputSource.GLASSES)) },
-                "Phone" to { onSettingsChange(settings.copy(liveInputSource = LiveInputSource.PHONE)) },
+                stringResource(R.string.live_input_source_auto_label) to {
+                    onSettingsChange(settings.copy(liveInputSource = LiveInputSource.AUTO))
+                },
+                stringResource(R.string.live_input_source_glasses_label) to {
+                    onSettingsChange(settings.copy(liveInputSource = LiveInputSource.GLASSES))
+                },
+                stringResource(R.string.live_input_source_phone_label) to {
+                    onSettingsChange(settings.copy(liveInputSource = LiveInputSource.PHONE))
+                },
             ),
             onDismiss = { showLiveInputDialog = false }
         )
@@ -820,10 +842,18 @@ fun SettingsScreen(
         SimpleSelectionDialog(
             title = stringResource(R.string.live_output_target),
             options = listOf(
-                "Auto" to { onSettingsChange(settings.copy(liveOutputTarget = LiveOutputTarget.AUTO)) },
-                "Glasses" to { onSettingsChange(settings.copy(liveOutputTarget = LiveOutputTarget.GLASSES)) },
-                "Phone" to { onSettingsChange(settings.copy(liveOutputTarget = LiveOutputTarget.PHONE)) },
-                "Both" to { onSettingsChange(settings.copy(liveOutputTarget = LiveOutputTarget.BOTH)) },
+                stringResource(R.string.live_output_target_auto_label) to {
+                    onSettingsChange(settings.copy(liveOutputTarget = LiveOutputTarget.AUTO))
+                },
+                stringResource(R.string.live_output_target_glasses_label) to {
+                    onSettingsChange(settings.copy(liveOutputTarget = LiveOutputTarget.GLASSES))
+                },
+                stringResource(R.string.live_output_target_phone_label) to {
+                    onSettingsChange(settings.copy(liveOutputTarget = LiveOutputTarget.PHONE))
+                },
+                stringResource(R.string.live_output_target_both_label) to {
+                    onSettingsChange(settings.copy(liveOutputTarget = LiveOutputTarget.BOTH))
+                },
             ),
             onDismiss = { showLiveOutputDialog = false }
         )
@@ -951,11 +981,18 @@ fun SettingsRow(
     title: String,
     subtitle: String,
     onClick: () -> Unit,
-    icon: androidx.compose.ui.graphics.vector.ImageVector? = null
+    icon: androidx.compose.ui.graphics.vector.ImageVector? = null,
+    enabled: Boolean = true,
 ) {
+    val rowOnClick: () -> Unit = {
+        if (enabled) {
+            onClick()
+        }
+    }
+
     androidx.compose.material3.Surface(
         modifier = Modifier.fillMaxWidth(),
-        onClick = onClick,
+        onClick = rowOnClick,
         shape = MaterialTheme.shapes.small,
         color = MaterialTheme.colorScheme.surface
     ) {
@@ -985,7 +1022,12 @@ fun SettingsRow(
                     Text(
                         text = title, 
                         style = MaterialTheme.typography.bodyLarge,
-                        fontWeight = androidx.compose.ui.text.font.FontWeight.Medium
+                        fontWeight = androidx.compose.ui.text.font.FontWeight.Medium,
+                        color = if (enabled) {
+                            MaterialTheme.colorScheme.onSurface
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        }
                     )
                     Text(
                         text = subtitle,
@@ -997,7 +1039,11 @@ fun SettingsRow(
             Icon(
                 imageVector = Icons.Default.ChevronRight,
                 contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                tint = if (enabled) {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                } else {
+                    MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                },
                 modifier = Modifier.size(20.dp)
             )
         }
