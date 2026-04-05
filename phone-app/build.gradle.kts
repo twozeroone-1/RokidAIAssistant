@@ -155,7 +155,7 @@ dependencies {
     
     // Rokid CXR-M SDK (Mobile SDK - via Maven)
     // Used for connecting to glasses, device control, and photo capture
-    implementation("com.rokid.cxr:client-m:1.0.4")
+    implementation("com.rokid.cxr:client-m:1.2.1")
     
     // CXR SDK required dependencies
     implementation("com.squareup.retrofit2:retrofit:3.0.0")

@@ -143,6 +143,30 @@ class CxrMobileManager(private val context: Context) {
             val mac = glassMacAddress ?: ""
             _bluetoothState.value = BluetoothState.Connected(uuid, mac)
         }
+
+        override fun onInActiveConnected(socketUuid: String?, macAddress: String?) {
+            if (!isCallbackRegistered) {
+                Log.w(TAG, "onInActiveConnected fired before callback registration, ignoring")
+                return
+            }
+
+            val resolvedUuid = socketUuid?.takeUnless { it.isBlank() || it.equals("unknown", ignoreCase = true) }
+            val resolvedMac = macAddress?.takeUnless { it.isBlank() || it.equals("unknown", ignoreCase = true) }
+            if (resolvedUuid != null) {
+                glassSocketUuid = resolvedUuid
+            }
+            if (resolvedMac != null) {
+                glassMacAddress = resolvedMac
+            }
+
+            Log.w(TAG, "Bluetooth inactive connected: uuid=$resolvedUuid, mac=$resolvedMac; promoting to active connection")
+            _bluetoothState.value = BluetoothState.Connecting
+            if (resolvedMac != null) {
+                cxrApi.activeBluetoothConnect(resolvedMac)
+            } else {
+                cxrApi.activeBluetoothConnect()
+            }
+        }
         
         override fun onDisconnected() {
             if (!isCallbackRegistered) {
