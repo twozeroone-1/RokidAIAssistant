@@ -1284,6 +1284,13 @@ class GlassesViewModel(
             } catch (e: SecurityException) {
                 liveInputCaptureActive = false
                 Log.e(TAG, "Microphone permission error during glasses live capture", e)
+            } catch (e: CancellationException) {
+                if (GlassesLiveCaptureFailurePolicy.isExpectedStop(e)) {
+                    Log.d(TAG, "Glasses live capture cancelled during normal stop")
+                } else {
+                    liveInputCaptureActive = false
+                    Log.e(TAG, "Failed during glasses live capture", e)
+                }
             } catch (e: Exception) {
                 liveInputCaptureActive = false
                 Log.e(TAG, "Failed during glasses live capture", e)
