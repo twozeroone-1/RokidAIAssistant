@@ -414,7 +414,10 @@ class LiveSessionCoordinator(
         if (maybeFallbackWithoutGoogleSearch(apiKey, failureType)) {
             return
         }
-        if (failureType == null && resumeSessionWithSavedHandle(apiKey, "connection_failure")) {
+        if (
+            (isResumableConnectionTermination(errorMessage) || failureType == null) &&
+            resumeSessionWithSavedHandle(apiKey, "connection_failure")
+        ) {
             return
         }
         if (failureType != null && rotateToNextKey(apiKey, failureType)) {
@@ -528,10 +531,6 @@ class LiveSessionCoordinator(
         trigger: String,
     ): Boolean {
         val baseConfig = activeBaseConfig ?: return false
-        if (!baseConfig.liveLongSessionEnabled) {
-            return false
-        }
-
         val handle = latestResumptionHandle?.takeIf { it.isNotBlank() } ?: return false
         if (lastAttemptedResumptionHandle == handle) {
             return false

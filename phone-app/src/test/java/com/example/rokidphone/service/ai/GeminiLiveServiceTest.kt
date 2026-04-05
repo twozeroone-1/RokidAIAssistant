@@ -116,6 +116,21 @@ class GeminiLiveServiceTest {
     }
 
     @Test
+    fun `setup message enables session resumption even when long sessions are off`() {
+        val service = GeminiLiveService(
+            apiKey = "test-key",
+            enableLongSession = false,
+            sessionResumptionHandle = "resume-123"
+        )
+
+        val setup = service.buildSetupMessage().getJSONObject("setup")
+
+        assertThat(setup.getJSONObject("sessionResumption").getString("handle"))
+            .isEqualTo("resume-123")
+        assertThat(setup.has("contextWindowCompression")).isFalse()
+    }
+
+    @Test
     fun `setup message omits thinking config by default`() {
         val service = GeminiLiveService(apiKey = "test-key")
 

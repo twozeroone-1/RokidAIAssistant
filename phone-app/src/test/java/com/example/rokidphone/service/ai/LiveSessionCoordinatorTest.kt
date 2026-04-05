@@ -393,7 +393,7 @@ class LiveSessionCoordinatorTest {
     }
 
     @Test
-    fun `go away does not resume when long session toggle is off`() {
+    fun `go away resumes even when long session toggle is off`() {
         coordinator.sync(
             liveSettings {
                 copy(
@@ -414,7 +414,40 @@ class LiveSessionCoordinatorTest {
         coordinator.onGoAway("test-live-key")
         scope.advanceUntilIdle()
 
-        assertThat(createdConfigs).hasSize(1)
+        assertThat(createdConfigs).hasSize(2)
+        assertThat(latestConfig().sessionResumptionHandle).isEqualTo("resume-123")
+        assertThat(latestConfig().liveLongSessionEnabled).isFalse()
+    }
+
+    @Test
+    fun `aborted close resumes with saved handle even when long session toggle is off`() {
+        coordinator.sync(
+            liveSettings {
+                copy(
+                    liveLongSessionEnabled = false,
+                    liveInputSource = LiveInputSource.PHONE,
+                    liveOutputTarget = LiveOutputTarget.PHONE,
+                )
+            },
+            glassesConnected = false
+        )
+        scope.advanceUntilIdle()
+        latestSession().mutableState.value = GeminiLiveSession.SessionState.ACTIVE
+        coordinator.onSessionResumptionUpdate(
+            LiveSessionResumptionUpdate(newHandle = "resume-123", resumable = true)
+        )
+        scope.advanceUntilIdle()
+
+        coordinator.onSessionFailure(
+            apiKey = "test-live-key",
+            errorMessage = "The operation was aborted."
+        )
+        scope.advanceUntilIdle()
+
+        assertThat(createdConfigs).hasSize(2)
+        assertThat(latestConfig().sessionResumptionHandle).isEqualTo("resume-123")
+        assertThat(latestConfig().liveLongSessionEnabled).isFalse()
+        assertThat(coordinator.errorMessage.value).isNull()
     }
 
     @Test

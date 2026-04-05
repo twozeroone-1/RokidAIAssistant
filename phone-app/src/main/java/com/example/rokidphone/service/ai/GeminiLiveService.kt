@@ -539,12 +539,12 @@ class GeminiLiveService(
                 put("inputAudioTranscription", JSONObject())
                 put("outputAudioTranscription", JSONObject())
 
+                put("sessionResumption", JSONObject().apply {
+                    if (!sessionResumptionHandle.isNullOrBlank()) {
+                        put("handle", sessionResumptionHandle)
+                    }
+                })
                 if (enableLongSession) {
-                    put("sessionResumption", JSONObject().apply {
-                        if (!sessionResumptionHandle.isNullOrBlank()) {
-                            put("handle", sessionResumptionHandle)
-                        }
-                    })
                     put("contextWindowCompression", JSONObject().apply {
                         put("slidingWindow", JSONObject())
                     })

@@ -5,6 +5,17 @@ internal enum class LiveSessionFailureType {
     QUOTA,
 }
 
+internal fun isResumableConnectionTermination(rawError: String?): Boolean {
+    if (rawError.isNullOrBlank()) {
+        return false
+    }
+
+    val normalizedError = rawError.trim().lowercase()
+
+    return normalizedError.contains("the operation was aborted") ||
+        normalizedError.contains("operation was aborted")
+}
+
 internal fun classifyLiveSessionFailure(rawError: String?): LiveSessionFailureType? {
     if (rawError.isNullOrBlank()) {
         return null
