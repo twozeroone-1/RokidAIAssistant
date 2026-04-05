@@ -243,6 +243,12 @@
     <string name="live_input_source_auto_label">자동</string>
     <string name="live_input_source_glasses_label">안경</string>
     <string name="live_input_source_phone_label">휴대폰</string>
+    <string name="experimental_live_mic_tuning">실험용 Live 마이크 튜닝</string>
+    <string name="experimental_live_mic_tuning_description">안경 입력에만 다른 Live 마이크 캡처 경로를 시도합니다. 바로 원래 방식으로 돌아가려면 이 옵션을 끄세요.</string>
+    <string name="experimental_live_mic_profile">Live 마이크 프로파일</string>
+    <string name="experimental_live_mic_profile_near">0 - 근거리 수신</string>
+    <string name="experimental_live_mic_profile_far">1 - 원거리 픽업</string>
+    <string name="experimental_live_mic_profile_panorama">2 - 파노라마 사운드 픽업</string>
     <string name="live_output_target_auto_label">자동</string>
     <string name="live_output_target_glasses_label">안경으로 전달</string>
     <string name="live_output_target_phone_label">휴대폰 앱 재생</string>

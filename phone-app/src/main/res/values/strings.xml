@@ -74,6 +74,12 @@
     <string name="live_input_source_auto_label">Auto</string>
     <string name="live_input_source_glasses_label">Glasses</string>
     <string name="live_input_source_phone_label">Phone</string>
+    <string name="experimental_live_mic_tuning">Experimental live mic tuning</string>
+    <string name="experimental_live_mic_tuning_description">Try alternate live mic capture behavior for glasses input only. Turn this off to return to the current path immediately.</string>
+    <string name="experimental_live_mic_profile">Live mic profile</string>
+    <string name="experimental_live_mic_profile_near">0 - Near field</string>
+    <string name="experimental_live_mic_profile_far">1 - Far field</string>
+    <string name="experimental_live_mic_profile_panorama">2 - Panorama</string>
     <string name="live_output_target_auto_label">Auto</string>
     <string name="live_output_target_glasses_label">Forward to glasses</string>
     <string name="live_output_target_phone_label">Phone app playback</string>

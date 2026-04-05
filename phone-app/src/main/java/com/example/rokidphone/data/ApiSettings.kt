@@ -759,6 +759,8 @@ data class ApiSettings(
     val liveRagDisplayMode: LiveRagDisplayMode = LiveRagDisplayMode.RAG_RESULT_ONLY,
     val liveRagSplitScrollMode: LiveRagSplitScrollMode = LiveRagSplitScrollMode.AUTO,
     val liveRagAutoScrollSpeedLevel: Int = DEFAULT_LIVE_RAG_AUTO_SCROLL_SPEED_LEVEL,
+    val experimentalLiveMicTuningEnabled: Boolean = false,
+    val experimentalLiveMicProfile: Int = DEFAULT_EXPERIMENTAL_LIVE_MIC_PROFILE,
     val liveInputSource: LiveInputSource = LiveInputSource.AUTO,
     val liveOutputTarget: LiveOutputTarget = LiveOutputTarget.AUTO,
     val liveCameraMode: LiveCameraMode = LiveCameraMode.OFF,
@@ -912,6 +914,9 @@ data class ApiSettings(
         const val MIN_LIVE_RAG_AUTO_SCROLL_SPEED_LEVEL = 0
         const val MAX_LIVE_RAG_AUTO_SCROLL_SPEED_LEVEL = 4
         const val DEFAULT_LIVE_RAG_AUTO_SCROLL_SPEED_LEVEL = 2
+        const val MIN_EXPERIMENTAL_LIVE_MIC_PROFILE = 0
+        const val MAX_EXPERIMENTAL_LIVE_MIC_PROFILE = 2
+        const val DEFAULT_EXPERIMENTAL_LIVE_MIC_PROFILE = 0
 
         fun clampResponseFontScalePercent(value: Int): Int {
             return value.coerceIn(
@@ -924,6 +929,13 @@ data class ApiSettings(
             return value.coerceIn(
                 MIN_LIVE_RAG_AUTO_SCROLL_SPEED_LEVEL,
                 MAX_LIVE_RAG_AUTO_SCROLL_SPEED_LEVEL
+            )
+        }
+
+        fun clampExperimentalLiveMicProfile(value: Int): Int {
+            return value.coerceIn(
+                MIN_EXPERIMENTAL_LIVE_MIC_PROFILE,
+                MAX_EXPERIMENTAL_LIVE_MIC_PROFILE
             )
         }
 

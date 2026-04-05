@@ -10,6 +10,9 @@ import android.media.AudioRecord
 import android.media.AudioTrack
 import android.media.MediaPlayer
 import android.media.MediaRecorder
+import android.media.audiofx.AcousticEchoCanceler
+import android.media.audiofx.AutomaticGainControl
+import android.media.audiofx.NoiseSuppressor
 import android.util.Log
 import androidx.core.app.ActivityCompat
 import androidx.lifecycle.ViewModel
@@ -79,6 +82,8 @@ data class GlassesUiState(
     val liveMinimalUiEnabled: Boolean = false,
     val isLiveModeActive: Boolean = false,
     val liveInputSource: LiveControlInputSource = LiveControlInputSource.UNKNOWN,
+    val experimentalLiveMicTuningEnabled: Boolean = false,
+    val experimentalLiveMicProfile: Int = 0,
     val liveTranscription: String = "",
     val liveRagEnabled: Boolean = false,
     val liveRagDisplayMode: LiveRagDisplayMode = LiveRagDisplayMode.RAG_RESULT_ONLY,
@@ -108,6 +113,56 @@ private fun shouldKeepLiveDisplayText(
         LiveRagDisplayMode.RAG_RESULT_ONLY -> liveRagText.isNotBlank()
         LiveRagDisplayMode.SPLIT_LIVE_AND_RAG ->
             liveAssistantText.isNotBlank() || liveRagText.isNotBlank()
+    }
+}
+
+internal data class LiveMicCaptureConfig(
+    val sourceCandidates: List<Int>,
+    val enableNoiseSuppressor: Boolean,
+    val enableAutomaticGainControl: Boolean,
+    val enableAcousticEchoCanceler: Boolean,
+)
+
+internal fun resolveLiveMicCaptureConfig(
+    experimentEnabled: Boolean,
+    selectedProfile: Int,
+): LiveMicCaptureConfig {
+    if (!experimentEnabled) {
+        return LiveMicCaptureConfig(
+            sourceCandidates = listOf(MediaRecorder.AudioSource.MIC),
+            enableNoiseSuppressor = false,
+            enableAutomaticGainControl = false,
+            enableAcousticEchoCanceler = false,
+        )
+    }
+
+    return when (selectedProfile.coerceIn(0, 2)) {
+        0 -> LiveMicCaptureConfig(
+            sourceCandidates = listOf(
+                MediaRecorder.AudioSource.VOICE_COMMUNICATION,
+                MediaRecorder.AudioSource.MIC,
+            ),
+            enableNoiseSuppressor = true,
+            enableAutomaticGainControl = true,
+            enableAcousticEchoCanceler = true,
+        )
+
+        1 -> LiveMicCaptureConfig(
+            sourceCandidates = listOf(
+                MediaRecorder.AudioSource.VOICE_RECOGNITION,
+                MediaRecorder.AudioSource.MIC,
+            ),
+            enableNoiseSuppressor = true,
+            enableAutomaticGainControl = true,
+            enableAcousticEchoCanceler = false,
+        )
+
+        else -> LiveMicCaptureConfig(
+            sourceCandidates = listOf(MediaRecorder.AudioSource.MIC),
+            enableNoiseSuppressor = false,
+            enableAutomaticGainControl = false,
+            enableAcousticEchoCanceler = false,
+        )
     }
 }
 
@@ -178,6 +233,9 @@ class GlassesViewModel(
     private val audioBuffer = ByteArrayOutputStream()
     private var liveAudioTrack: AudioTrack? = null
     private var liveInputAudioRecord: AudioRecord? = null
+    private var liveInputNoiseSuppressor: NoiseSuppressor? = null
+    private var liveInputAutomaticGainControl: AutomaticGainControl? = null
+    private var liveInputAcousticEchoCanceler: AcousticEchoCanceler? = null
     private var liveInputCaptureJob: Job? = null
     private var liveInputCaptureActive = false
     private val liveAudioPlaybackQueue = LiveAudioPlaybackQueue(
@@ -1197,16 +1255,17 @@ class GlassesViewModel(
                     return@launch
                 }
 
-                val record = AudioRecord(
-                    MediaRecorder.AudioSource.MIC,
-                    Constants.AUDIO_SAMPLE_RATE,
-                    AudioFormat.CHANNEL_IN_MONO,
-                    AudioFormat.ENCODING_PCM_16BIT,
-                    bufferSize
+                val captureConfig = resolveLiveMicCaptureConfig(
+                    experimentEnabled = _uiState.value.experimentalLiveMicTuningEnabled,
+                    selectedProfile = _uiState.value.experimentalLiveMicProfile,
+                )
+                val record = createLiveInputAudioRecord(
+                    bufferSize = bufferSize,
+                    config = captureConfig,
                 )
                 liveInputAudioRecord = record
 
-                if (record.state != AudioRecord.STATE_INITIALIZED) {
+                if (record == null || record.state != AudioRecord.STATE_INITIALIZED) {
                     Log.e(TAG, "Failed to initialize glasses live AudioRecord")
                     liveInputCaptureActive = false
                     releaseLiveInputAudioRecord()
@@ -1249,6 +1308,7 @@ class GlassesViewModel(
     private fun releaseLiveInputAudioRecord() {
         val record = liveInputAudioRecord ?: return
         liveInputAudioRecord = null
+        releaseLiveInputAudioEffects()
         try {
             if (record.recordingState == AudioRecord.RECORDSTATE_RECORDING) {
                 record.stop()
@@ -1263,9 +1323,84 @@ class GlassesViewModel(
         }
     }
 
+    private fun createLiveInputAudioRecord(
+        bufferSize: Int,
+        config: LiveMicCaptureConfig,
+    ): AudioRecord? {
+        config.sourceCandidates.distinct().forEach { source ->
+            val record = try {
+                AudioRecord(
+                    source,
+                    Constants.AUDIO_SAMPLE_RATE,
+                    AudioFormat.CHANNEL_IN_MONO,
+                    AudioFormat.ENCODING_PCM_16BIT,
+                    bufferSize
+                )
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to create live AudioRecord for source=$source", e)
+                null
+            }
+
+            if (record == null) {
+                return@forEach
+            }
+
+            if (record.state == AudioRecord.STATE_INITIALIZED) {
+                Log.d(TAG, "Using live input audio source=$source")
+                configureLiveInputAudioEffects(record, config)
+                return record
+            }
+
+            try {
+                record.release()
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to release rejected live AudioRecord source=$source", e)
+            }
+        }
+
+        return null
+    }
+
+    private fun configureLiveInputAudioEffects(
+        record: AudioRecord,
+        config: LiveMicCaptureConfig,
+    ) {
+        releaseLiveInputAudioEffects()
+        val sessionId = record.audioSessionId
+        if (sessionId == AudioRecord.ERROR || sessionId == AudioRecord.ERROR_BAD_VALUE) {
+            return
+        }
+
+        if (config.enableNoiseSuppressor && NoiseSuppressor.isAvailable()) {
+            liveInputNoiseSuppressor = runCatching {
+                NoiseSuppressor.create(sessionId)?.apply { enabled = true }
+            }.getOrNull()
+        }
+        if (config.enableAutomaticGainControl && AutomaticGainControl.isAvailable()) {
+            liveInputAutomaticGainControl = runCatching {
+                AutomaticGainControl.create(sessionId)?.apply { enabled = true }
+            }.getOrNull()
+        }
+        if (config.enableAcousticEchoCanceler && AcousticEchoCanceler.isAvailable()) {
+            liveInputAcousticEchoCanceler = runCatching {
+                AcousticEchoCanceler.create(sessionId)?.apply { enabled = true }
+            }.getOrNull()
+        }
+    }
+
+    private fun releaseLiveInputAudioEffects() {
+        runCatching { liveInputNoiseSuppressor?.release() }
+        liveInputNoiseSuppressor = null
+        runCatching { liveInputAutomaticGainControl?.release() }
+        liveInputAutomaticGainControl = null
+        runCatching { liveInputAcousticEchoCanceler?.release() }
+        liveInputAcousticEchoCanceler = null
+    }
+
     private fun applyLiveSessionConfig(payload: LiveSessionControlPayload) {
         val liveRagSplitScrollMode = payload.splitScrollMode
         val liveRagAutoScrollSpeedLevel = payload.autoScrollSpeedLevel.coerceIn(0, 4)
+        val experimentalLiveMicProfile = payload.experimentalLiveMicProfile.coerceIn(0, 2)
         if (payload.cameraMode.isNullOrBlank()) {
             liveCameraMode = LiveCameraStreamingMode.REALTIME
             videoFrameIntervalMs = 1000L
@@ -1273,6 +1408,8 @@ class GlassesViewModel(
                 it.copy(
                     liveModeEnabled = payload.liveModeEnabled,
                     liveInputSource = payload.effectiveInputSource,
+                    experimentalLiveMicTuningEnabled = payload.experimentalLiveMicTuningEnabled,
+                    experimentalLiveMicProfile = experimentalLiveMicProfile,
                     liveRagEnabled = false,
                     liveRagDisplayMode = LiveRagDisplayMode.RAG_RESULT_ONLY,
                     liveRagSplitScrollMode = liveRagSplitScrollMode,
@@ -1301,6 +1438,8 @@ class GlassesViewModel(
                 it.copy(
                     liveModeEnabled = payload.liveModeEnabled,
                     liveInputSource = payload.effectiveInputSource,
+                    experimentalLiveMicTuningEnabled = payload.experimentalLiveMicTuningEnabled,
+                    experimentalLiveMicProfile = experimentalLiveMicProfile,
                     liveRagEnabled = liveRagEnabled,
                     liveRagDisplayMode = ragDisplayMode,
                     liveRagSplitScrollMode = liveRagSplitScrollMode,
@@ -1315,6 +1454,8 @@ class GlassesViewModel(
                 it.copy(
                     liveModeEnabled = payload.liveModeEnabled,
                     liveInputSource = payload.effectiveInputSource,
+                    experimentalLiveMicTuningEnabled = payload.experimentalLiveMicTuningEnabled,
+                    experimentalLiveMicProfile = experimentalLiveMicProfile,
                     liveRagEnabled = false,
                     liveRagDisplayMode = LiveRagDisplayMode.RAG_RESULT_ONLY,
                     liveRagSplitScrollMode = liveRagSplitScrollMode,

@@ -9,6 +9,8 @@ internal object PhoneSettingsSyncPolicy {
             responseFontScalePercent = current.responseFontScalePercent,
             glassesSleepModeEnabled = current.glassesSleepModeEnabled,
             liveMinimalUiEnabled = current.liveMinimalUiEnabled,
+            experimentalLiveMicTuningEnabled = current.experimentalLiveMicTuningEnabled,
+            experimentalLiveMicProfile = current.experimentalLiveMicProfile,
         ) != current
     }
 

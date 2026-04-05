@@ -146,6 +146,7 @@ class PhoneAIService : Service() {
     private var pendingLiveRagTurnState: LiveRagTurnState = LiveRagTurnState()
     private var latestLiveUsageMetadata: LiveUsageMetadata? = null
     private var lastSyncedResponseFontScalePercent: Int? = null
+    private var lastAppliedExperimentalLiveMicSceneId: Int? = null
     
     // Track recording IDs currently being processed to prevent duplicate transcription
     private val processingRecordingIds = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
@@ -241,6 +242,7 @@ class PhoneAIService : Service() {
                     syncLiveMinimalUiSetting(validatedNewSettings)
                     syncResponseFontScaleSetting(validatedNewSettings)
                     syncLiveSessionStateToGlasses(validatedNewSettings)
+                    syncExperimentalLiveMicScene(validatedNewSettings)
                     lastAppliedSettings = validatedNewSettings
                     
                     Log.d(
@@ -293,6 +295,9 @@ class PhoneAIService : Service() {
                             syncLiveMinimalUiSetting(settings)
                             syncResponseFontScaleSetting(settings, force = true)
                             syncLiveSessionStateToGlasses(settings)
+                            syncExperimentalLiveMicScene(settings)
+                        } else {
+                            lastAppliedExperimentalLiveMicSceneId = null
                         }
                         latestValidatedSettings?.let { handleLiveModeTransition(it) }
                     }
@@ -1339,6 +1344,7 @@ class PhoneAIService : Service() {
                             settings = settings,
                             sessionActive = true,
                         )
+                        syncExperimentalLiveMicScene(settings)
                     }
                 }
             }
@@ -1491,6 +1497,10 @@ class PhoneAIService : Service() {
             autoScrollSpeedLevel = ApiSettings.clampLiveRagAutoScrollSpeedLevel(
                 settings.liveRagAutoScrollSpeedLevel
             ),
+            experimentalLiveMicTuningEnabled = settings.experimentalLiveMicTuningEnabled,
+            experimentalLiveMicProfile = ApiSettings.clampExperimentalLiveMicProfile(
+                settings.experimentalLiveMicProfile
+            ),
         ).toPayloadString()
     }
 
@@ -1542,6 +1552,42 @@ class PhoneAIService : Service() {
             sessionActive = sessionActive,
         )
         liveSessionAnnouncedToGlasses = sessionActive
+    }
+
+    private suspend fun syncExperimentalLiveMicScene(settings: ApiSettings) {
+        if (
+            !settings.liveModeEnabled ||
+            !settings.experimentalLiveMicTuningEnabled ||
+            !isGlassesConnected()
+        ) {
+            lastAppliedExperimentalLiveMicSceneId = null
+            return
+        }
+
+        val effectiveInputSource = liveCoordinator?.sessionStatus?.value?.inputSource ?: when (settings.liveInputSource) {
+            LiveInputSource.AUTO -> if (isGlassesConnected()) LiveInputSource.GLASSES else LiveInputSource.PHONE
+            else -> settings.liveInputSource
+        }
+        if (effectiveInputSource != LiveInputSource.GLASSES) {
+            lastAppliedExperimentalLiveMicSceneId = null
+            return
+        }
+
+        val sceneId = ApiSettings.clampExperimentalLiveMicProfile(settings.experimentalLiveMicProfile)
+        if (lastAppliedExperimentalLiveMicSceneId == sceneId) {
+            return
+        }
+
+        val status = cxrManager?.changeAudioSceneId(sceneId) { changedSceneId, success ->
+            Log.d(
+                TAG,
+                "Experimental live mic scene callback: scene=$changedSceneId, success=$success"
+            )
+        }
+        if (status != null) {
+            Log.d(TAG, "Applied experimental live mic scene: profile=$sceneId, status=$status")
+            lastAppliedExperimentalLiveMicSceneId = sceneId
+        }
     }
 
     private suspend fun handleGlassesLiveSessionToggleRequest() {

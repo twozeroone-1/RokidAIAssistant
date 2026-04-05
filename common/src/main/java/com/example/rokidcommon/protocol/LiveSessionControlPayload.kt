@@ -25,6 +25,8 @@ data class LiveSessionControlPayload(
     val ragDisplayMode: LiveRagDisplayMode = LiveRagDisplayMode.RAG_RESULT_ONLY,
     val splitScrollMode: LiveRagSplitScrollMode = LiveRagSplitScrollMode.AUTO,
     val autoScrollSpeedLevel: Int = 2,
+    val experimentalLiveMicTuningEnabled: Boolean = false,
+    val experimentalLiveMicProfile: Int = 0,
 ) {
     val canToggleFromGlasses: Boolean
         get() = liveModeEnabled
@@ -58,6 +60,10 @@ data class LiveSessionControlPayload(
             append('"')
             append(",\"autoScrollSpeedLevel\":")
             append(autoScrollSpeedLevel)
+            append(",\"experimentalLiveMicTuningEnabled\":")
+            append(if (experimentalLiveMicTuningEnabled) "true" else "false")
+            append(",\"experimentalLiveMicProfile\":")
+            append(experimentalLiveMicProfile)
             append('}')
         }
     }
@@ -89,6 +95,12 @@ data class LiveSessionControlPayload(
                 ),
                 autoScrollSpeedLevel = AUTO_SCROLL_SPEED_LEVEL_REGEX.find(raw)?.groupValues?.getOrNull(1)?.toIntOrNull()
                     ?: 2,
+                experimentalLiveMicTuningEnabled = EXPERIMENTAL_LIVE_MIC_TUNING_ENABLED_REGEX.find(raw)
+                    ?.groupValues?.getOrNull(1)
+                    .equals("true", ignoreCase = true),
+                experimentalLiveMicProfile = EXPERIMENTAL_LIVE_MIC_PROFILE_REGEX.find(raw)?.groupValues?.getOrNull(1)
+                    ?.toIntOrNull()
+                    ?: 0,
             )
         }
 
@@ -101,6 +113,10 @@ data class LiveSessionControlPayload(
         private val RAG_DISPLAY_MODE_REGEX = Regex(""""ragDisplayMode":"((?:\\\\.|[^"])*)"""")
         private val SPLIT_SCROLL_MODE_REGEX = Regex(""""splitScrollMode":"((?:\\\\.|[^"])*)"""")
         private val AUTO_SCROLL_SPEED_LEVEL_REGEX = Regex(""""autoScrollSpeedLevel":(-?\d+)""")
+        private val EXPERIMENTAL_LIVE_MIC_TUNING_ENABLED_REGEX =
+            Regex(""""experimentalLiveMicTuningEnabled":(true|false)""")
+        private val EXPERIMENTAL_LIVE_MIC_PROFILE_REGEX =
+            Regex(""""experimentalLiveMicProfile":(-?\d+)""")
     }
 }
 

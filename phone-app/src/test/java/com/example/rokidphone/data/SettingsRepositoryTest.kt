@@ -150,6 +150,8 @@ class SettingsRepositoryTest {
                 liveRagDisplayMode = LiveRagDisplayMode.SPLIT_LIVE_AND_RAG,
                 liveRagSplitScrollMode = LiveRagSplitScrollMode.MANUAL,
                 liveRagAutoScrollSpeedLevel = 4,
+                experimentalLiveMicTuningEnabled = true,
+                experimentalLiveMicProfile = 2,
                 liveInputSource = LiveInputSource.GLASSES,
                 liveOutputTarget = LiveOutputTarget.BOTH,
                 liveCameraMode = LiveCameraMode.INTERVAL,
@@ -172,6 +174,8 @@ class SettingsRepositoryTest {
         assertThat(reloadedSettings.liveRagDisplayMode).isEqualTo(LiveRagDisplayMode.SPLIT_LIVE_AND_RAG)
         assertThat(reloadedSettings.liveRagSplitScrollMode).isEqualTo(LiveRagSplitScrollMode.MANUAL)
         assertThat(reloadedSettings.liveRagAutoScrollSpeedLevel).isEqualTo(4)
+        assertThat(reloadedSettings.experimentalLiveMicTuningEnabled).isTrue()
+        assertThat(reloadedSettings.experimentalLiveMicProfile).isEqualTo(2)
         assertThat(reloadedSettings.liveInputSource).isEqualTo(LiveInputSource.GLASSES)
         assertThat(reloadedSettings.liveOutputTarget).isEqualTo(LiveOutputTarget.BOTH)
         assertThat(reloadedSettings.liveCameraMode).isEqualTo(LiveCameraMode.INTERVAL)
@@ -189,5 +193,24 @@ class SettingsRepositoryTest {
 
         assertThat(reloadedSettings.liveRagAutoScrollSpeedLevel)
             .isEqualTo(ApiSettings.MAX_LIVE_RAG_AUTO_SCROLL_SPEED_LEVEL)
+    }
+
+    @Test
+    fun `saveSettings clamps experimental live mic profile`() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val repository = SettingsRepository(context)
+
+        repository.saveSettings(
+            ApiSettings(
+                experimentalLiveMicTuningEnabled = true,
+                experimentalLiveMicProfile = 99,
+            )
+        )
+
+        val reloadedSettings = SettingsRepository(context).getSettings()
+
+        assertThat(reloadedSettings.experimentalLiveMicTuningEnabled).isTrue()
+        assertThat(reloadedSettings.experimentalLiveMicProfile)
+            .isEqualTo(ApiSettings.MAX_EXPERIMENTAL_LIVE_MIC_PROFILE)
     }
 }

@@ -44,6 +44,9 @@ class ApiSettingsTest {
         assertThat(settings.liveRagSplitScrollMode).isEqualTo(LiveRagSplitScrollMode.AUTO)
         assertThat(settings.liveRagAutoScrollSpeedLevel)
             .isEqualTo(ApiSettings.DEFAULT_LIVE_RAG_AUTO_SCROLL_SPEED_LEVEL)
+        assertThat(settings.experimentalLiveMicTuningEnabled).isFalse()
+        assertThat(settings.experimentalLiveMicProfile)
+            .isEqualTo(ApiSettings.DEFAULT_EXPERIMENTAL_LIVE_MIC_PROFILE)
     }
 
     @Test
@@ -53,6 +56,16 @@ class ApiSettingsTest {
         )
         assertThat(ApiSettings.clampLiveRagAutoScrollSpeedLevel(99)).isEqualTo(
             ApiSettings.MAX_LIVE_RAG_AUTO_SCROLL_SPEED_LEVEL
+        )
+    }
+
+    @Test
+    fun `experimental live mic profile clamps into supported range`() {
+        assertThat(ApiSettings.clampExperimentalLiveMicProfile(-3)).isEqualTo(
+            ApiSettings.MIN_EXPERIMENTAL_LIVE_MIC_PROFILE
+        )
+        assertThat(ApiSettings.clampExperimentalLiveMicProfile(99)).isEqualTo(
+            ApiSettings.MAX_EXPERIMENTAL_LIVE_MIC_PROFILE
         )
     }
 

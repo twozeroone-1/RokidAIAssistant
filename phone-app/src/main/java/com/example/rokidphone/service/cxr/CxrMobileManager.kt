@@ -367,7 +367,36 @@ class CxrMobileManager(private val context: Context) {
         onAiExit = null
         cxrApi.setAiEventListener(null)
     }
-    
+
+    /**
+     * Best-effort audio pickup scene update.
+     *
+     * Scene IDs are defined by Rokid:
+     * 0 = near field, 1 = far field, 2 = panorama.
+     */
+    fun changeAudioSceneId(
+        sceneId: Int,
+        onChanged: ((sceneId: Int, success: Boolean) -> Unit)? = null,
+    ): ValueUtil.CxrStatus? {
+        return try {
+            val status = cxrApi.changeAudioSceneId(
+                sceneId,
+                AudioSceneIdCallback { changedSceneId, success ->
+                    Log.d(
+                        TAG,
+                        "Audio scene changed callback: requested=$sceneId, actual=$changedSceneId, success=$success"
+                    )
+                    onChanged?.invoke(changedSceneId, success)
+                }
+            )
+            Log.d(TAG, "changeAudioSceneId($sceneId): $status")
+            status
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to change audio scene id: $sceneId", e)
+            null
+        }
+    }
+
     /**
      * Open glasses camera
      */

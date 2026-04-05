@@ -57,6 +57,7 @@ fun SettingsScreen(
     var showLanguageDialog by remember { mutableStateOf(false) }
     var showCustomModelDialog by remember { mutableStateOf(false) }
     var showLiveInputDialog by remember { mutableStateOf(false) }
+    var showExperimentalLiveMicProfileDialog by remember { mutableStateOf(false) }
     var showLiveOutputDialog by remember { mutableStateOf(false) }
     var showLiveCameraModeDialog by remember { mutableStateOf(false) }
     var showLiveCameraIntervalDialog by remember { mutableStateOf(false) }
@@ -77,6 +78,13 @@ fun SettingsScreen(
             LiveOutputTarget.GLASSES -> context.getString(R.string.live_output_target_glasses_label)
             LiveOutputTarget.PHONE -> context.getString(R.string.live_output_target_phone_label)
             LiveOutputTarget.BOTH -> context.getString(R.string.live_output_target_both_label)
+        }
+    }
+    val experimentalLiveMicProfileLabel = remember(settings.experimentalLiveMicProfile, context) {
+        when (ApiSettings.clampExperimentalLiveMicProfile(settings.experimentalLiveMicProfile)) {
+            0 -> context.getString(R.string.experimental_live_mic_profile_near)
+            1 -> context.getString(R.string.experimental_live_mic_profile_far)
+            else -> context.getString(R.string.experimental_live_mic_profile_panorama)
         }
     }
     val liveCameraModeLabel = remember(settings.liveCameraMode) {
@@ -313,6 +321,29 @@ fun SettingsScreen(
                             subtitle = liveInputLabel,
                             onClick = { showLiveInputDialog = true }
                         )
+
+                        HorizontalDivider()
+
+                        SettingsRowWithSwitch(
+                            title = stringResource(R.string.experimental_live_mic_tuning),
+                            subtitle = stringResource(R.string.experimental_live_mic_tuning_description),
+                            checked = settings.experimentalLiveMicTuningEnabled,
+                            onCheckedChange = { enabled ->
+                                onSettingsChange(
+                                    settings.copy(experimentalLiveMicTuningEnabled = enabled)
+                                )
+                            }
+                        )
+
+                        if (settings.experimentalLiveMicTuningEnabled) {
+                            HorizontalDivider()
+
+                            SettingsRow(
+                                title = stringResource(R.string.experimental_live_mic_profile),
+                                subtitle = experimentalLiveMicProfileLabel,
+                                onClick = { showExperimentalLiveMicProfileDialog = true }
+                            )
+                        }
 
                         HorizontalDivider()
 
@@ -834,6 +865,24 @@ fun SettingsScreen(
                 },
             ),
             onDismiss = { showLiveThinkingDialog = false }
+        )
+    }
+
+    if (showExperimentalLiveMicProfileDialog) {
+        SimpleSelectionDialog(
+            title = stringResource(R.string.experimental_live_mic_profile),
+            options = listOf(
+                stringResource(R.string.experimental_live_mic_profile_near) to {
+                    onSettingsChange(settings.copy(experimentalLiveMicProfile = 0))
+                },
+                stringResource(R.string.experimental_live_mic_profile_far) to {
+                    onSettingsChange(settings.copy(experimentalLiveMicProfile = 1))
+                },
+                stringResource(R.string.experimental_live_mic_profile_panorama) to {
+                    onSettingsChange(settings.copy(experimentalLiveMicProfile = 2))
+                },
+            ),
+            onDismiss = { showExperimentalLiveMicProfileDialog = false }
         )
     }
 
