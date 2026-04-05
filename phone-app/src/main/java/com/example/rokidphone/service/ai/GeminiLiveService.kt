@@ -2,6 +2,7 @@ package com.example.rokidphone.service.ai
 
 import android.util.Base64
 import android.util.Log
+import com.example.rokidphone.data.LiveMediaResolution
 import com.example.rokidphone.data.LiveThinkingLevel
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -39,6 +40,7 @@ class GeminiLiveService(
     private val modelId: String = "gemini-3.1-flash-live-preview",
     private val systemPrompt: String = "",
     private val liveVoiceName: String = "Aoede",
+    private val mediaResolution: LiveMediaResolution? = null,
     private val enableLongSession: Boolean = false,
     private val sessionResumptionHandle: String? = null,
     private val thinkingLevel: LiveThinkingLevel = LiveThinkingLevel.DEFAULT,
@@ -496,6 +498,10 @@ class GeminiLiveService(
                             })
                         })
                     })
+
+                    mediaResolution?.let { resolution ->
+                        put("mediaResolution", resolution.wireValue)
+                    }
 
                     if (thinkingLevel.wireValue != null || includeThoughtSummaries) {
                         put("thinkingConfig", JSONObject().apply {

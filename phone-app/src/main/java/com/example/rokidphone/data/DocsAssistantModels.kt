@@ -36,6 +36,12 @@ enum class LiveCameraMode {
     REALTIME
 }
 
+enum class LiveMediaResolution(val wireValue: String) {
+    LOW("MEDIA_RESOLUTION_LOW"),
+    MEDIUM("MEDIA_RESOLUTION_MEDIUM"),
+    HIGH("MEDIA_RESOLUTION_HIGH")
+}
+
 enum class LiveThinkingLevel(val wireValue: String?) {
     DEFAULT(null),
     MINIMAL("minimal"),

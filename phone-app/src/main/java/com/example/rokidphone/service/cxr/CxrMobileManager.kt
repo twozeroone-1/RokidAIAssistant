@@ -3,7 +3,10 @@ package com.example.rokidphone.service.cxr
 import android.annotation.SuppressLint
 import android.bluetooth.BluetoothDevice
 import android.content.Context
+import android.content.res.Resources
 import android.util.Log
+import com.example.rokidphone.BuildConfig
+import com.example.rokidphone.R
 import com.rokid.cxr.client.extend.CxrApi
 import com.rokid.cxr.client.extend.callbacks.*
 import com.rokid.cxr.client.extend.listeners.AiEventListener
@@ -299,12 +302,40 @@ class CxrMobileManager(private val context: Context) {
      */
     private fun connectBluetooth(context: Context, socketUuid: String, macAddress: String) {
         try {
+            val auth = buildCxrBluetoothConnectAuth(
+                rawClientSecret = BuildConfig.ROKID_CLIENT_SECRET,
+                snBytes = readSnAuthFile(context.resources)
+            )
             Log.d(TAG, "Connecting Bluetooth: uuid=$socketUuid, mac=$macAddress")
+            if (auth == null) {
+                Log.w(TAG, "Rokid SN auth/client secret missing; falling back to unauthenticated CXR connect")
+            } else {
+                Log.d(TAG, "Using Rokid SN auth and client secret for CXR connect")
+            }
             // connectBluetooth parameters: context, socketUuid, macAddress, callback, secretKey, identifier
-            cxrApi.connectBluetooth(context, socketUuid, macAddress, bluetoothCallback, null, null)
+            cxrApi.connectBluetooth(
+                context,
+                socketUuid,
+                macAddress,
+                bluetoothCallback,
+                auth?.snBytes,
+                auth?.clientSecret
+            )
         } catch (e: Exception) {
             Log.e(TAG, "Failed to connect Bluetooth", e)
             _bluetoothState.value = BluetoothState.Failed(e.message ?: "Connection error")
+        }
+    }
+
+    private fun readSnAuthFile(resources: Resources): ByteArray? {
+        return try {
+            resources.openRawResource(R.raw.sn_auth_file).use { it.readBytes() }
+        } catch (notFound: Resources.NotFoundException) {
+            Log.w(TAG, "R.raw.sn_auth_file is missing")
+            null
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to read Rokid SN auth file", e)
+            null
         }
     }
     
@@ -457,6 +488,40 @@ class CxrMobileManager(private val context: Context) {
         } catch (e: Exception) {
             Log.e(TAG, "Failed to take photo", e)
             null
+        }
+    }
+
+    /**
+     * Best-effort global photo capture aligned with Rokid photo APIs.
+     *
+     * Falls back to takeGlassPhoto when the SDK build does not expose the
+     * global variant or the reflective call fails.
+     */
+    fun takeGlobalPhoto(
+        width: Int = 1280,
+        height: Int = 720,
+        quality: Int = 90,
+        callback: (status: ValueUtil.CxrStatus?, photoData: ByteArray?) -> Unit
+    ): ValueUtil.CxrStatus? {
+        this.onPhotoResult = callback
+
+        return try {
+            val method = cxrApi.javaClass.methods.firstOrNull { candidate ->
+                candidate.name == "takeGlassPhotoGlobal" && candidate.parameterTypes.size == 4
+            }
+
+            if (method == null) {
+                Log.w(TAG, "takeGlassPhotoGlobal unavailable, falling back to takeGlassPhoto")
+                return takePhoto(width, height, quality, callback)
+            }
+
+            @Suppress("UNCHECKED_CAST")
+            val status = method.invoke(cxrApi, width, height, quality, photoCallback) as? ValueUtil.CxrStatus
+            Log.d(TAG, "Take global photo request: $status")
+            status
+        } catch (e: Exception) {
+            Log.w(TAG, "takeGlassPhotoGlobal failed, falling back to takeGlassPhoto", e)
+            takePhoto(width, height, quality, callback)
         }
     }
     

@@ -2,6 +2,7 @@ package com.example.rokidphone.service.ai
 
 import com.google.common.truth.Truth.assertThat
 import com.example.rokidphone.data.GeminiLiveVoice
+import com.example.rokidphone.data.LiveMediaResolution
 import com.example.rokidphone.data.LiveThinkingLevel
 import okio.ByteString.Companion.encodeUtf8
 import org.junit.Test
@@ -156,6 +157,22 @@ class GeminiLiveServiceTest {
 
         assertThat(generationConfig.getJSONObject("thinkingConfig").getString("thinkingLevel"))
             .isEqualTo("medium")
+    }
+
+    @Test
+    fun `setup message includes configured media resolution`() {
+        val service = GeminiLiveService(
+            apiKey = "test-key",
+            mediaResolution = LiveMediaResolution.HIGH,
+        )
+
+        val generationConfig = service
+            .buildSetupMessage()
+            .getJSONObject("setup")
+            .getJSONObject("generationConfig")
+
+        assertThat(generationConfig.getString("mediaResolution"))
+            .isEqualTo("MEDIA_RESOLUTION_HIGH")
     }
 
     @Test

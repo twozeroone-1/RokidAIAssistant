@@ -4,6 +4,7 @@ import com.example.rokidphone.data.ApiSettings
 import com.example.rokidphone.data.GeminiLiveVoice
 import com.example.rokidphone.data.LiveCameraMode
 import com.example.rokidphone.data.LiveInputSource
+import com.example.rokidphone.data.LiveMediaResolution
 import com.example.rokidphone.data.PhonePlaybackRoute
 import com.example.rokidphone.data.LiveThinkingLevel
 import com.example.rokidphone.data.LiveOutputTarget
@@ -303,6 +304,22 @@ class LiveSessionCoordinatorTest {
         )
 
         assertThat(latestConfig().liveThoughtSummariesEnabled).isTrue()
+    }
+
+    @Test
+    fun `sync uses high media resolution for manual live camera mode`() {
+        coordinator.sync(
+            liveSettings {
+                copy(
+                    liveCameraMode = LiveCameraMode.MANUAL,
+                    liveInputSource = LiveInputSource.PHONE,
+                    liveOutputTarget = LiveOutputTarget.PHONE,
+                )
+            },
+            glassesConnected = false
+        )
+
+        assertThat(latestConfig().mediaResolution).isEqualTo(LiveMediaResolution.HIGH)
     }
 
     @Test

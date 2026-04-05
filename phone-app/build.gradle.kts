@@ -9,22 +9,24 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
 }
 
+val localPropsFile = rootProject.file("local.properties")
+val localProps = Properties().apply {
+    if (localPropsFile.exists()) {
+        localPropsFile.inputStream().use { load(it) }
+    }
+}
+fun localProperty(name: String): String? = localProps.getProperty(name)?.takeIf { it.isNotBlank() }
+
+val releaseStoreFile = localProperty("RELEASE_STORE_FILE")
+val releaseStorePassword = localProperty("RELEASE_STORE_PASSWORD")
+val releaseKeyAlias = localProperty("RELEASE_KEY_ALIAS")
+val releaseKeyPassword = localProperty("RELEASE_KEY_PASSWORD")
+val rokidClientSecret = localProperty("ROKID_CLIENT_SECRET") ?: ""
+val rokidSnFile = localProperty("ROKID_SN_FILE")
+
 android {
     namespace = "com.example.rokidphone"
     compileSdk = 36
-
-    val localPropsFile = rootProject.file("local.properties")
-    val localProps = Properties().apply {
-        if (localPropsFile.exists()) {
-            localPropsFile.inputStream().use { load(it) }
-        }
-    }
-    fun localProperty(name: String): String? = localProps.getProperty(name)?.takeIf { it.isNotBlank() }
-
-    val releaseStoreFile = localProperty("RELEASE_STORE_FILE")
-    val releaseStorePassword = localProperty("RELEASE_STORE_PASSWORD")
-    val releaseKeyAlias = localProperty("RELEASE_KEY_ALIAS")
-    val releaseKeyPassword = localProperty("RELEASE_KEY_PASSWORD")
     val hasReleaseSigning = listOf(
         releaseStoreFile,
         releaseStorePassword,
@@ -46,6 +48,7 @@ android {
         val openaiKey = localProps.getProperty("OPENAI_API_KEY", "")
         buildConfigField("String", "GEMINI_API_KEY", "\"$geminiKey\"")
         buildConfigField("String", "OPENAI_API_KEY", "\"$openaiKey\"")
+        buildConfigField("String", "ROKID_CLIENT_SECRET", "\"$rokidClientSecret\"")
     }
 
     signingConfigs {
@@ -102,6 +105,10 @@ android {
         }
     }
 
+    sourceSets.named("main") {
+        res.srcDir("build/generated/rokid-res")
+    }
+
     testOptions {
         unitTests {
             isIncludeAndroidResources = true
@@ -111,6 +118,35 @@ android {
     lint {
         baseline = file("lint-baseline.xml")
     }
+}
+
+val prepareRokidSnAuthRaw = tasks.register("prepareRokidSnAuthRaw") {
+    val outputDirProvider = layout.buildDirectory.dir("generated/rokid-res/raw")
+    outputs.dir(outputDirProvider)
+
+    doLast {
+        val outputDir = outputDirProvider.get().asFile
+        delete(outputDir)
+
+        if (rokidSnFile.isNullOrBlank()) {
+            logger.lifecycle("ROKID_SN_FILE is not configured; skipping generated sn_auth_file.lc")
+            return@doLast
+        }
+
+        val sourceFile = file(rokidSnFile)
+        if (!sourceFile.exists()) {
+            logger.warn("ROKID_SN_FILE does not exist: $rokidSnFile")
+            return@doLast
+        }
+
+        outputDir.mkdirs()
+        sourceFile.copyTo(outputDir.resolve("sn_auth_file.lc"), overwrite = true)
+        logger.lifecycle("Prepared generated Rokid SN auth file from $rokidSnFile")
+    }
+}
+
+tasks.named("preBuild").configure {
+    dependsOn(prepareRokidSnAuthRaw)
 }
 
 kotlin {

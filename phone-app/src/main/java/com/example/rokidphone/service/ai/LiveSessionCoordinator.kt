@@ -3,6 +3,7 @@ package com.example.rokidphone.service.ai
 import com.example.rokidphone.data.ApiSettings
 import com.example.rokidphone.data.LiveCameraMode
 import com.example.rokidphone.data.LiveInputSource
+import com.example.rokidphone.data.LiveMediaResolution
 import com.example.rokidphone.data.LiveOutputTarget
 import com.example.rokidphone.data.LiveThinkingLevel
 import com.example.rokidphone.data.PhonePlaybackRoute
@@ -42,6 +43,7 @@ data class LiveSessionConfig(
     val playbackPhoneAudio: Boolean,
     val phonePlaybackRoute: PhonePlaybackRoute,
     val liveCameraMode: LiveCameraMode,
+    val mediaResolution: LiveMediaResolution? = null,
     val liveCameraIntervalSec: Int,
     val liveRagEnabled: Boolean,
     val liveRagDisplayMode: LiveRagDisplayMode = LiveRagDisplayMode.RAG_RESULT_ONLY,
@@ -63,6 +65,7 @@ private data class LiveSessionBaseConfig(
     val playbackPhoneAudio: Boolean,
     val phonePlaybackRoute: PhonePlaybackRoute,
     val liveCameraMode: LiveCameraMode,
+    val mediaResolution: LiveMediaResolution?,
     val liveCameraIntervalSec: Int,
     val liveRagEnabled: Boolean,
     val liveRagDisplayMode: LiveRagDisplayMode,
@@ -86,6 +89,7 @@ private data class LiveSessionBaseConfig(
             playbackPhoneAudio = playbackPhoneAudio,
             phonePlaybackRoute = phonePlaybackRoute,
             liveCameraMode = liveCameraMode,
+            mediaResolution = mediaResolution,
             liveCameraIntervalSec = liveCameraIntervalSec,
             liveRagEnabled = liveRagEnabled,
             liveRagDisplayMode = liveRagDisplayMode,
@@ -213,6 +217,7 @@ class LiveSessionCoordinator(
                 configuredRoute = settings.phonePlaybackRoute,
             ),
             liveCameraMode = settings.liveCameraMode,
+            mediaResolution = resolveMediaResolution(settings.liveCameraMode),
             liveCameraIntervalSec = settings.liveCameraIntervalSec,
             liveRagEnabled = settings.liveRagEnabled,
             liveRagDisplayMode = resolveEffectiveLiveRagDisplayMode(
@@ -615,6 +620,14 @@ class LiveSessionCoordinator(
 
     private fun resolveLiveModelId(selectedModelId: String): String {
         return resolveGeminiLiveModelId(selectedModelId)
+    }
+
+    private fun resolveMediaResolution(cameraMode: LiveCameraMode): LiveMediaResolution? {
+        return if (cameraMode == LiveCameraMode.MANUAL) {
+            LiveMediaResolution.HIGH
+        } else {
+            null
+        }
     }
 
     private fun updateSessionStatus(config: LiveSessionConfig?) {

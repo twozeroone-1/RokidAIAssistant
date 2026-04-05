@@ -191,13 +191,6 @@ class GlassesViewModel(
         PHOTO_ANALYSIS
     }
 
-    private enum class LiveCameraStreamingMode {
-        OFF,
-        MANUAL,
-        INTERVAL,
-        REALTIME
-    }
-    
     private val _uiState = MutableStateFlow(GlassesUiState(
         displayText = context.getString(R.string.say_hey_rokid),
         hintText = context.getString(R.string.tap_touchpad_record)
@@ -1951,7 +1944,7 @@ class GlassesViewModel(
             }
         }
     }
-    
+
     /**
      * ViewModel Factory
      */

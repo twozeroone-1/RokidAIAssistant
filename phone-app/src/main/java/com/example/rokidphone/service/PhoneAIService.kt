@@ -377,7 +377,7 @@ class PhoneAIService : Service() {
         serviceScope.launch {
             ServiceBridge.capturePhotoFlow.collect {
                 Log.d(TAG, "Capture photo request from UI")
-                requestGlassesToCapturePhoto()
+                handleCapturePhotoRequest()
             }
         }
         
@@ -452,6 +452,18 @@ class PhoneAIService : Service() {
     /**
      * Request glasses to capture and send photo via SPP
      */
+    private suspend fun handleCapturePhotoRequest() {
+        val settings = latestValidatedSettings ?: settingsRepository.getSettings()
+        val liveState = liveCoordinator?.sessionState?.value ?: LiveSessionState.IDLE
+
+        if (shouldUseManualLiveFrameCapture(settings, liveState)) {
+            captureManualLiveFrameFromGlasses()
+            return
+        }
+
+        requestGlassesToCapturePhoto()
+    }
+
     private suspend fun requestGlassesToCapturePhoto() {
         if (bluetoothManager?.connectionState?.value != BluetoothConnectionState.CONNECTED) {
             Log.w(TAG, "Cannot capture photo: not connected to glasses")
@@ -615,6 +627,69 @@ class PhoneAIService : Service() {
         }
         
         Log.d(TAG, "CXR takePhoto request status: $status")
+    }
+
+    /**
+     * Capture a single frame from the glasses camera and inject it into the
+     * active Gemini Live session instead of the normal photo analysis flow.
+     */
+    private suspend fun captureManualLiveFrameFromGlasses() {
+        val coordinator = liveCoordinator
+        if (coordinator?.sessionState?.value != LiveSessionState.ACTIVE) {
+            Log.w(TAG, "Manual live frame requested without an active live session")
+            requestGlassesToCapturePhoto()
+            return
+        }
+
+        val cxr = cxrManager ?: run {
+            Log.w(TAG, "CXR manager not available for manual live frame capture")
+            bluetoothManager?.sendMessage(Message.aiError(getString(R.string.glasses_not_connected_cxr)))
+            return
+        }
+
+        if (!cxr.isBluetoothConnected()) {
+            Log.w(TAG, "CXR not connected to glasses for manual live frame capture")
+            bluetoothManager?.sendMessage(Message.aiError(getString(R.string.glasses_not_connected_cxr)))
+            return
+        }
+
+        Log.d(TAG, "Capturing manual live frame from glasses via CXR SDK...")
+        val takingPhotoMessage = getString(R.string.taking_photo)
+        ServiceBridge.emitConversation(Message.aiProcessing(takingPhotoMessage))
+        bluetoothManager?.sendMessage(Message.aiProcessing(takingPhotoMessage))
+        cxr.sendTtsContent(takingPhotoMessage)
+
+        val status = cxr.takeGlobalPhoto(
+            width = 1280,
+            height = 720,
+            quality = 90,
+        ) { resultStatus, photoData ->
+            serviceScope.launch {
+                when (resultStatus) {
+                    ValueUtil.CxrStatus.RESPONSE_SUCCEED -> {
+                        if (photoData != null && photoData.isNotEmpty()) {
+                            Log.d(TAG, "Manual live frame received: ${photoData.size} bytes")
+                            coordinator.receiveVideoFrame(photoData)
+                        } else {
+                            Log.e(TAG, "Manual live frame is empty")
+                            bluetoothManager?.sendMessage(Message.aiError(getString(R.string.photo_empty)))
+                        }
+                    }
+                    ValueUtil.CxrStatus.RESPONSE_TIMEOUT -> {
+                        Log.e(TAG, "Manual live frame capture timeout")
+                        bluetoothManager?.sendMessage(Message.aiError(getString(R.string.photo_timeout)))
+                    }
+                    else -> {
+                        Log.e(TAG, "Manual live frame capture failed: $resultStatus")
+                        bluetoothManager?.sendMessage(
+                            Message.aiError(getString(R.string.photo_capture_failed, resultStatus))
+                        )
+                    }
+                }
+            }
+        }
+
+        Log.d(TAG, "CXR takeGlobalPhoto request status: $status")
     }
     
     /**
@@ -1077,6 +1152,7 @@ class PhoneAIService : Service() {
                 capturePhoneAudio = config.capturePhoneAudio,
                 playbackPhoneAudio = config.playbackPhoneAudio,
                 phonePlaybackRoute = config.phonePlaybackRoute,
+                mediaResolution = config.mediaResolution,
                 enableLongSession = config.liveLongSessionEnabled,
                 sessionResumptionHandle = config.sessionResumptionHandle,
                 thinkingLevel = config.liveThinkingLevel,

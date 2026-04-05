@@ -99,7 +99,7 @@ fun SettingsScreen(
     val liveCameraModeLabel = remember(settings.liveCameraMode) {
         when (settings.liveCameraMode) {
             LiveCameraMode.OFF -> "Off"
-            LiveCameraMode.MANUAL -> "Manual capture"
+            LiveCameraMode.MANUAL -> "Manual capture (home capture button)"
             LiveCameraMode.INTERVAL -> "Interval"
             LiveCameraMode.REALTIME -> "Realtime"
         }
@@ -972,7 +972,9 @@ fun SettingsScreen(
             title = stringResource(R.string.live_camera_mode),
             options = listOf(
                 "Off" to { onSettingsChange(settings.copy(liveCameraMode = LiveCameraMode.OFF)) },
-                "Manual capture" to { onSettingsChange(settings.copy(liveCameraMode = LiveCameraMode.MANUAL)) },
+                "Manual capture (home capture button)" to {
+                    onSettingsChange(settings.copy(liveCameraMode = LiveCameraMode.MANUAL))
+                },
                 "Interval" to { onSettingsChange(settings.copy(liveCameraMode = LiveCameraMode.INTERVAL)) },
                 "Realtime" to { onSettingsChange(settings.copy(liveCameraMode = LiveCameraMode.REALTIME)) },
             ),
