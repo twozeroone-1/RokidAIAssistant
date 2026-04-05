@@ -120,6 +120,9 @@ fun SettingsScreen(
     val aiServicePresentation = remember(settings.liveModeEnabled, currentModelLabel) {
         resolveAiServicePresentation(settings, currentModelLabel)
     }
+    val realtimeSettingItems = remember(settings) {
+        realtimeConversationSettingItems(settings)
+    }
     
     Scaffold(
         topBar = {
@@ -191,209 +194,215 @@ fun SettingsScreen(
             if (settings.liveModeEnabled) {
                 item {
                     SettingsSection(title = stringResource(R.string.realtime_conversation)) {
-                        SettingsRowWithSwitch(
-                            title = stringResource(R.string.live_rag),
-                            subtitle = stringResource(R.string.live_rag_description),
-                            checked = settings.liveRagEnabled,
-                            onCheckedChange = { enabled ->
-                                onSettingsChange(settings.copy(liveRagEnabled = enabled))
-                            }
-                        )
-
-                        if (settings.liveRagEnabled) {
-                            Spacer(modifier = Modifier.height(8.dp))
-                            LiveRagDisplayModeSelector(
-                                selectedMode = settings.liveRagDisplayMode,
-                                onModeSelected = { mode ->
-                                    onSettingsChange(settings.copy(liveRagDisplayMode = mode))
+                        realtimeSettingItems.forEachIndexed { index, item ->
+                            when (item.key) {
+                                RealtimeConversationSettingKey.LIVE_INPUT_SOURCE -> {
+                                    SettingsRow(
+                                        title = stringResource(R.string.live_input_source),
+                                        subtitle = liveInputLabel,
+                                        onClick = { showLiveInputDialog = true }
+                                    )
                                 }
-                            )
 
-                            if (settings.liveRagDisplayMode == LiveRagDisplayMode.SPLIT_LIVE_AND_RAG) {
-                                Spacer(modifier = Modifier.height(12.dp))
-                                LiveRagSplitScrollModeSelector(
-                                    selectedMode = settings.liveRagSplitScrollMode,
-                                    onModeSelected = { mode ->
-                                        onSettingsChange(settings.copy(liveRagSplitScrollMode = mode))
-                                    }
-                                )
+                                RealtimeConversationSettingKey.LIVE_OUTPUT_TARGET -> {
+                                    SettingsRow(
+                                        title = stringResource(R.string.live_output_target),
+                                        subtitle = if (settings.liveAnswerAudioEnabled) {
+                                            liveOutputLabel
+                                        } else {
+                                            stringResource(R.string.live_output_target_disabled_summary)
+                                        },
+                                        onClick = { showLiveOutputDialog = true },
+                                        enabled = settings.liveAnswerAudioEnabled
+                                    )
+                                }
 
-                                if (settings.liveRagSplitScrollMode == LiveRagSplitScrollMode.AUTO) {
-                                    Spacer(modifier = Modifier.height(8.dp))
-                                    SettingsSliderRow(
-                                        title = stringResource(R.string.live_rag_auto_scroll_speed),
-                                        subtitle = stringResource(R.string.live_rag_auto_scroll_speed_description),
-                                        value = settings.liveRagAutoScrollSpeedLevel.toFloat(),
-                                        valueRange = ApiSettings.MIN_LIVE_RAG_AUTO_SCROLL_SPEED_LEVEL.toFloat()..
-                                            ApiSettings.MAX_LIVE_RAG_AUTO_SCROLL_SPEED_LEVEL.toFloat(),
-                                        steps = ApiSettings.MAX_LIVE_RAG_AUTO_SCROLL_SPEED_LEVEL -
-                                            ApiSettings.MIN_LIVE_RAG_AUTO_SCROLL_SPEED_LEVEL - 1,
-                                        valueText = liveRagAutoScrollSpeedLabel(settings.liveRagAutoScrollSpeedLevel),
-                                        onValueChange = { value ->
-                                            onSettingsChange(
-                                                settings.copy(
-                                                    liveRagAutoScrollSpeedLevel = ApiSettings.clampLiveRagAutoScrollSpeedLevel(
-                                                        value.roundToInt()
-                                                    )
+                                RealtimeConversationSettingKey.LIVE_ANSWER_AUDIO -> {
+                                    SettingsRowWithSwitch(
+                                        title = stringResource(R.string.live_answer_audio),
+                                        subtitle = stringResource(R.string.live_answer_audio_description),
+                                        checked = settings.liveAnswerAudioEnabled,
+                                        onCheckedChange = { enabled ->
+                                            onSettingsChange(settings.copy(liveAnswerAudioEnabled = enabled))
+                                        }
+                                    )
+                                }
+
+                                RealtimeConversationSettingKey.LIVE_BARGE_IN -> {
+                                    SettingsRowWithSwitch(
+                                        title = stringResource(R.string.live_barge_in),
+                                        subtitle = stringResource(R.string.live_barge_in_description),
+                                        checked = settings.liveBargeInEnabled,
+                                        onCheckedChange = { enabled ->
+                                            onSettingsChange(settings.copy(liveBargeInEnabled = enabled))
+                                        }
+                                    )
+                                }
+
+                                RealtimeConversationSettingKey.LIVE_VOICE -> {
+                                    SettingsRow(
+                                        title = stringResource(R.string.live_voice),
+                                        subtitle = liveVoiceLabel,
+                                        onClick = { showLiveVoiceDialog = true }
+                                    )
+                                }
+
+                                RealtimeConversationSettingKey.LIVE_GOOGLE_SEARCH -> {
+                                    SettingsRowWithSwitch(
+                                        title = stringResource(R.string.live_google_search),
+                                        subtitle = stringResource(R.string.live_google_search_description),
+                                        checked = settings.liveGoogleSearchEnabled,
+                                        onCheckedChange = { enabled ->
+                                            onSettingsChange(settings.copy(liveGoogleSearchEnabled = enabled))
+                                        }
+                                    )
+                                }
+
+                                RealtimeConversationSettingKey.LIVE_RAG -> {
+                                    SettingsRowWithSwitch(
+                                        title = stringResource(R.string.live_rag),
+                                        subtitle = stringResource(R.string.live_rag_description),
+                                        checked = settings.liveRagEnabled,
+                                        onCheckedChange = { enabled ->
+                                            onSettingsChange(settings.copy(liveRagEnabled = enabled))
+                                        }
+                                    )
+
+                                    if (settings.liveRagEnabled) {
+                                        Spacer(modifier = Modifier.height(8.dp))
+                                        LiveRagDisplayModeSelector(
+                                            selectedMode = settings.liveRagDisplayMode,
+                                            onModeSelected = { mode ->
+                                                onSettingsChange(settings.copy(liveRagDisplayMode = mode))
+                                            }
+                                        )
+
+                                        if (settings.liveRagDisplayMode == LiveRagDisplayMode.SPLIT_LIVE_AND_RAG) {
+                                            Spacer(modifier = Modifier.height(12.dp))
+                                            LiveRagSplitScrollModeSelector(
+                                                selectedMode = settings.liveRagSplitScrollMode,
+                                                onModeSelected = { mode ->
+                                                    onSettingsChange(settings.copy(liveRagSplitScrollMode = mode))
+                                                }
+                                            )
+
+                                            if (settings.liveRagSplitScrollMode == LiveRagSplitScrollMode.AUTO) {
+                                                Spacer(modifier = Modifier.height(8.dp))
+                                                SettingsSliderRow(
+                                                    title = stringResource(R.string.live_rag_auto_scroll_speed),
+                                                    subtitle = stringResource(R.string.live_rag_auto_scroll_speed_description),
+                                                    value = settings.liveRagAutoScrollSpeedLevel.toFloat(),
+                                                    valueRange = ApiSettings.MIN_LIVE_RAG_AUTO_SCROLL_SPEED_LEVEL.toFloat()..
+                                                        ApiSettings.MAX_LIVE_RAG_AUTO_SCROLL_SPEED_LEVEL.toFloat(),
+                                                    steps = ApiSettings.MAX_LIVE_RAG_AUTO_SCROLL_SPEED_LEVEL -
+                                                        ApiSettings.MIN_LIVE_RAG_AUTO_SCROLL_SPEED_LEVEL - 1,
+                                                    valueText = liveRagAutoScrollSpeedLabel(settings.liveRagAutoScrollSpeedLevel),
+                                                    onValueChange = { value ->
+                                                        onSettingsChange(
+                                                            settings.copy(
+                                                                liveRagAutoScrollSpeedLevel = ApiSettings.clampLiveRagAutoScrollSpeedLevel(
+                                                                    value.roundToInt()
+                                                                )
+                                                            )
+                                                        )
+                                                    }
                                                 )
+                                            }
+                                        }
+                                    }
+                                }
+
+                                RealtimeConversationSettingKey.LIVE_THINKING_LEVEL -> {
+                                    SettingsRow(
+                                        title = stringResource(R.string.live_thinking_level),
+                                        subtitle = liveThinkingLabel,
+                                        onClick = { showLiveThinkingDialog = true }
+                                    )
+                                }
+
+                                RealtimeConversationSettingKey.LIVE_LONG_SESSION -> {
+                                    SettingsRowWithSwitch(
+                                        title = stringResource(R.string.live_long_session),
+                                        subtitle = stringResource(R.string.live_long_session_description),
+                                        checked = settings.liveLongSessionEnabled,
+                                        onCheckedChange = { enabled ->
+                                            onSettingsChange(settings.copy(liveLongSessionEnabled = enabled))
+                                        }
+                                    )
+                                }
+
+                                RealtimeConversationSettingKey.LIVE_MINIMAL_UI -> {
+                                    SettingsRowWithSwitch(
+                                        title = stringResource(R.string.live_minimal_ui),
+                                        subtitle = stringResource(R.string.live_minimal_ui_description),
+                                        checked = settings.liveMinimalUiEnabled,
+                                        onCheckedChange = { enabled ->
+                                            onSettingsChange(settings.copy(liveMinimalUiEnabled = enabled))
+                                        }
+                                    )
+                                }
+
+                                RealtimeConversationSettingKey.EXPERIMENTAL_LIVE_MIC_TUNING -> {
+                                    SettingsRowWithSwitch(
+                                        title = stringResource(R.string.experimental_live_mic_tuning),
+                                        subtitle = stringResource(R.string.experimental_live_mic_tuning_description),
+                                        checked = settings.experimentalLiveMicTuningEnabled,
+                                        onCheckedChange = { enabled ->
+                                            onSettingsChange(
+                                                settings.copy(experimentalLiveMicTuningEnabled = enabled)
                                             )
                                         }
                                     )
                                 }
+
+                                RealtimeConversationSettingKey.EXPERIMENTAL_LIVE_MIC_PROFILE -> {
+                                    SettingsRow(
+                                        title = stringResource(R.string.experimental_live_mic_profile),
+                                        subtitle = experimentalLiveMicProfileLabel,
+                                        onClick = { showExperimentalLiveMicProfileDialog = true }
+                                    )
+                                }
+
+                                RealtimeConversationSettingKey.LIVE_THOUGHT_SUMMARIES -> {
+                                    SettingsRowWithSwitch(
+                                        title = stringResource(R.string.live_thought_summaries),
+                                        subtitle = stringResource(R.string.live_thought_summaries_description),
+                                        checked = settings.liveThoughtSummariesEnabled,
+                                        onCheckedChange = { enabled ->
+                                            onSettingsChange(settings.copy(liveThoughtSummariesEnabled = enabled))
+                                        }
+                                    )
+                                }
+
+                                RealtimeConversationSettingKey.LIVE_CAMERA_MODE -> {
+                                    SettingsRow(
+                                        title = stringResource(R.string.live_camera_mode),
+                                        subtitle = liveCameraModeLabel,
+                                        onClick = { showLiveCameraModeDialog = true }
+                                    )
+
+                                    if (settings.liveCameraMode == LiveCameraMode.REALTIME) {
+                                        Spacer(modifier = Modifier.height(12.dp))
+                                        Text(
+                                            text = stringResource(R.string.live_camera_realtime_warning),
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.error
+                                        )
+                                    }
+                                }
+
+                                RealtimeConversationSettingKey.LIVE_CAMERA_INTERVAL -> {
+                                    SettingsRow(
+                                        title = stringResource(R.string.live_camera_interval),
+                                        subtitle = "${settings.liveCameraIntervalSec}s",
+                                        onClick = { showLiveCameraIntervalDialog = true }
+                                    )
+                                }
                             }
-                        }
 
-                    HorizontalDivider()
-
-                    SettingsRowWithSwitch(
-                        title = stringResource(R.string.live_answer_audio),
-                        subtitle = stringResource(R.string.live_answer_audio_description),
-                        checked = settings.liveAnswerAudioEnabled,
-                        onCheckedChange = { enabled ->
-                            onSettingsChange(settings.copy(liveAnswerAudioEnabled = enabled))
-                        }
-                    )
-
-                    HorizontalDivider()
-
-                    SettingsRowWithSwitch(
-                        title = stringResource(R.string.live_barge_in),
-                        subtitle = stringResource(R.string.live_barge_in_description),
-                        checked = settings.liveBargeInEnabled,
-                        onCheckedChange = { enabled ->
-                            onSettingsChange(settings.copy(liveBargeInEnabled = enabled))
+                            if (index < realtimeSettingItems.lastIndex) {
+                                HorizontalDivider()
                             }
-                        )
-
-                        HorizontalDivider()
-
-                        SettingsRow(
-                            title = stringResource(R.string.live_voice),
-                            subtitle = liveVoiceLabel,
-                            onClick = { showLiveVoiceDialog = true }
-                        )
-
-                        HorizontalDivider()
-
-                        SettingsRow(
-                            title = stringResource(R.string.live_thinking_level),
-                            subtitle = liveThinkingLabel,
-                            onClick = { showLiveThinkingDialog = true }
-                        )
-
-                        HorizontalDivider()
-
-                        SettingsRowWithSwitch(
-                            title = stringResource(R.string.live_thought_summaries),
-                            subtitle = stringResource(R.string.live_thought_summaries_description),
-                            checked = settings.liveThoughtSummariesEnabled,
-                            onCheckedChange = { enabled ->
-                                onSettingsChange(settings.copy(liveThoughtSummariesEnabled = enabled))
-                            }
-                        )
-
-                        HorizontalDivider()
-
-                        SettingsRowWithSwitch(
-                            title = stringResource(R.string.live_long_session),
-                            subtitle = stringResource(R.string.live_long_session_description),
-                            checked = settings.liveLongSessionEnabled,
-                            onCheckedChange = { enabled ->
-                                onSettingsChange(settings.copy(liveLongSessionEnabled = enabled))
-                            }
-                        )
-
-                        HorizontalDivider()
-
-                        SettingsRowWithSwitch(
-                            title = stringResource(R.string.live_google_search),
-                            subtitle = stringResource(R.string.live_google_search_description),
-                            checked = settings.liveGoogleSearchEnabled,
-                            onCheckedChange = { enabled ->
-                                onSettingsChange(settings.copy(liveGoogleSearchEnabled = enabled))
-                            }
-                        )
-
-                        HorizontalDivider()
-
-                        SettingsRow(
-                            title = stringResource(R.string.live_input_source),
-                            subtitle = liveInputLabel,
-                            onClick = { showLiveInputDialog = true }
-                        )
-
-                        HorizontalDivider()
-
-                        SettingsRowWithSwitch(
-                            title = stringResource(R.string.experimental_live_mic_tuning),
-                            subtitle = stringResource(R.string.experimental_live_mic_tuning_description),
-                            checked = settings.experimentalLiveMicTuningEnabled,
-                            onCheckedChange = { enabled ->
-                                onSettingsChange(
-                                    settings.copy(experimentalLiveMicTuningEnabled = enabled)
-                                )
-                            }
-                        )
-
-                        if (settings.experimentalLiveMicTuningEnabled) {
-                            HorizontalDivider()
-
-                            SettingsRow(
-                                title = stringResource(R.string.experimental_live_mic_profile),
-                                subtitle = experimentalLiveMicProfileLabel,
-                                onClick = { showExperimentalLiveMicProfileDialog = true }
-                            )
-                        }
-
-                        HorizontalDivider()
-
-                        SettingsRow(
-                            title = stringResource(R.string.live_output_target),
-                            subtitle = if (settings.liveAnswerAudioEnabled) {
-                                liveOutputLabel
-                            } else {
-                                stringResource(R.string.live_output_target_disabled_summary)
-                            },
-                            onClick = { showLiveOutputDialog = true },
-                            enabled = settings.liveAnswerAudioEnabled
-                        )
-
-                        HorizontalDivider()
-
-                        SettingsRowWithSwitch(
-                            title = stringResource(R.string.live_minimal_ui),
-                            subtitle = stringResource(R.string.live_minimal_ui_description),
-                            checked = settings.liveMinimalUiEnabled,
-                            onCheckedChange = { enabled ->
-                                onSettingsChange(settings.copy(liveMinimalUiEnabled = enabled))
-                            }
-                        )
-
-                        HorizontalDivider()
-
-                        SettingsRow(
-                            title = stringResource(R.string.live_camera_mode),
-                            subtitle = liveCameraModeLabel,
-                            onClick = { showLiveCameraModeDialog = true }
-                        )
-
-                        if (settings.liveCameraMode == LiveCameraMode.INTERVAL) {
-                            HorizontalDivider()
-
-                            SettingsRow(
-                                title = stringResource(R.string.live_camera_interval),
-                                subtitle = "${settings.liveCameraIntervalSec}s",
-                                onClick = { showLiveCameraIntervalDialog = true }
-                            )
-                        }
-
-                        if (settings.liveCameraMode == LiveCameraMode.REALTIME) {
-                            Spacer(modifier = Modifier.height(12.dp))
-                            Text(
-                                text = stringResource(R.string.live_camera_realtime_warning),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.error
-                            )
                         }
                     }
                 }
