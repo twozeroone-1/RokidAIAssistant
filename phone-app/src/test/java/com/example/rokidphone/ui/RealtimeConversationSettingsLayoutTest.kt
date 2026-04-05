@@ -14,6 +14,7 @@ class RealtimeConversationSettingsLayoutTest {
         assertThat(items).containsExactly(
             RealtimeConversationSettingKey.LIVE_INPUT_SOURCE,
             RealtimeConversationSettingKey.LIVE_OUTPUT_TARGET,
+            RealtimeConversationSettingKey.PHONE_PLAYBACK_ROUTE,
             RealtimeConversationSettingKey.LIVE_ANSWER_AUDIO,
             RealtimeConversationSettingKey.LIVE_BARGE_IN,
             RealtimeConversationSettingKey.LIVE_VOICE,
@@ -41,6 +42,7 @@ class RealtimeConversationSettingsLayoutTest {
             )
         ).map { it.key }
 
+        assertThat(conditionalItems).contains(RealtimeConversationSettingKey.PHONE_PLAYBACK_ROUTE)
         assertThat(conditionalItems).contains(RealtimeConversationSettingKey.EXPERIMENTAL_LIVE_MIC_PROFILE)
         assertThat(conditionalItems).contains(RealtimeConversationSettingKey.LIVE_CAMERA_INTERVAL)
         assertThat(
@@ -53,5 +55,11 @@ class RealtimeConversationSettingsLayoutTest {
         ).isGreaterThan(
             conditionalItems.indexOf(RealtimeConversationSettingKey.LIVE_CAMERA_MODE)
         )
+
+        val hiddenPhoneRouteItems = realtimeConversationSettingItems(
+            ApiSettings(liveOutputTarget = com.example.rokidphone.data.LiveOutputTarget.GLASSES)
+        ).map { it.key }
+        assertThat(hiddenPhoneRouteItems)
+            .doesNotContain(RealtimeConversationSettingKey.PHONE_PLAYBACK_ROUTE)
     }
 }

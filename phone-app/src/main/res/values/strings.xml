@@ -81,9 +81,13 @@
     <string name="experimental_live_mic_profile_far">1 - Far field</string>
     <string name="experimental_live_mic_profile_panorama">2 - Panorama</string>
     <string name="live_output_target_auto_label">Auto</string>
-    <string name="live_output_target_glasses_label">Forward to glasses</string>
-    <string name="live_output_target_phone_label">Phone app playback</string>
+    <string name="live_output_target_glasses_label">Glasses app playback</string>
+    <string name="live_output_target_phone_label">Play on phone (system route)</string>
     <string name="live_output_target_both_label">Phone app + glasses</string>
+    <string name="phone_playback_route">Phone playback route</string>
+    <string name="phone_playback_route_summary">Current route: %1$s</string>
+    <string name="phone_playback_route_system_default_label">System default</string>
+    <string name="phone_playback_route_phone_speaker_label">Force phone speaker (Experimental)</string>
     <string name="live_output_target_off_label">Audio off</string>
     <string name="live_output_target_disabled_summary">Disabled while live answer audio playback is off</string>
     <string name="live_minimal_ui">Live minimal UI</string>

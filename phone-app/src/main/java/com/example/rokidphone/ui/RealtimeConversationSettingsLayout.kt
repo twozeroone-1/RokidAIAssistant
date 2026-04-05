@@ -2,10 +2,12 @@ package com.example.rokidphone.ui
 
 import com.example.rokidphone.data.ApiSettings
 import com.example.rokidphone.data.LiveCameraMode
+import com.example.rokidphone.data.LiveOutputTarget
 
 enum class RealtimeConversationSettingKey {
     LIVE_INPUT_SOURCE,
     LIVE_OUTPUT_TARGET,
+    PHONE_PLAYBACK_ROUTE,
     LIVE_ANSWER_AUDIO,
     LIVE_BARGE_IN,
     LIVE_VOICE,
@@ -29,6 +31,7 @@ fun realtimeConversationSettingItems(settings: ApiSettings): List<RealtimeConver
     val items = mutableListOf(
         RealtimeConversationSettingItem(RealtimeConversationSettingKey.LIVE_INPUT_SOURCE),
         RealtimeConversationSettingItem(RealtimeConversationSettingKey.LIVE_OUTPUT_TARGET),
+        RealtimeConversationSettingItem(RealtimeConversationSettingKey.PHONE_PLAYBACK_ROUTE),
         RealtimeConversationSettingItem(RealtimeConversationSettingKey.LIVE_ANSWER_AUDIO),
         RealtimeConversationSettingItem(RealtimeConversationSettingKey.LIVE_BARGE_IN),
         RealtimeConversationSettingItem(RealtimeConversationSettingKey.LIVE_VOICE),
@@ -39,6 +42,10 @@ fun realtimeConversationSettingItems(settings: ApiSettings): List<RealtimeConver
         RealtimeConversationSettingItem(RealtimeConversationSettingKey.LIVE_MINIMAL_UI),
         RealtimeConversationSettingItem(RealtimeConversationSettingKey.EXPERIMENTAL_LIVE_MIC_TUNING),
     )
+
+    if (!settings.liveAnswerAudioEnabled || settings.liveOutputTarget != LiveOutputTarget.PHONE) {
+        items.remove(RealtimeConversationSettingItem(RealtimeConversationSettingKey.PHONE_PLAYBACK_ROUTE))
+    }
 
     if (settings.experimentalLiveMicTuningEnabled) {
         items += RealtimeConversationSettingItem(RealtimeConversationSettingKey.EXPERIMENTAL_LIVE_MIC_PROFILE)

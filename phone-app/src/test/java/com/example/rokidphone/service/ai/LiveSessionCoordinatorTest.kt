@@ -4,6 +4,7 @@ import com.example.rokidphone.data.ApiSettings
 import com.example.rokidphone.data.GeminiLiveVoice
 import com.example.rokidphone.data.LiveCameraMode
 import com.example.rokidphone.data.LiveInputSource
+import com.example.rokidphone.data.PhonePlaybackRoute
 import com.example.rokidphone.data.LiveThinkingLevel
 import com.example.rokidphone.data.LiveOutputTarget
 import com.example.rokidcommon.protocol.LiveRagDisplayMode
@@ -71,7 +72,12 @@ class LiveSessionCoordinatorTest {
 
     @Test
     fun `sync with auto routing prefers glasses when connected`() {
-        coordinator.sync(liveSettings(), glassesConnected = true)
+        coordinator.sync(
+            liveSettings {
+                copy(liveOutputTarget = LiveOutputTarget.AUTO)
+            },
+            glassesConnected = true
+        )
 
         assertThat(latestConfig().capturePhoneAudio).isFalse()
         assertThat(latestConfig().playbackPhoneAudio).isFalse()
@@ -150,6 +156,37 @@ class LiveSessionCoordinatorTest {
         assertThat(latestConfig().capturePhoneAudio).isFalse()
         assertThat(latestConfig().playbackPhoneAudio).isTrue()
         assertThat(coordinator.shouldForwardAudioToGlasses).isFalse()
+    }
+
+    @Test
+    fun `sync passes phone playback route only for explicit phone output`() {
+        coordinator.sync(
+            liveSettings {
+                copy(
+                    liveInputSource = LiveInputSource.GLASSES,
+                    liveOutputTarget = LiveOutputTarget.PHONE,
+                    phonePlaybackRoute = PhonePlaybackRoute.PHONE_SPEAKER,
+                )
+            },
+            glassesConnected = true
+        )
+
+        assertThat(latestConfig().phonePlaybackRoute)
+            .isEqualTo(PhonePlaybackRoute.PHONE_SPEAKER)
+
+        coordinator.sync(
+            liveSettings {
+                copy(
+                    liveInputSource = LiveInputSource.GLASSES,
+                    liveOutputTarget = LiveOutputTarget.GLASSES,
+                    phonePlaybackRoute = PhonePlaybackRoute.PHONE_SPEAKER,
+                )
+            },
+            glassesConnected = true
+        )
+
+        assertThat(latestConfig().phonePlaybackRoute)
+            .isEqualTo(PhonePlaybackRoute.SYSTEM_DEFAULT)
     }
 
     @Test

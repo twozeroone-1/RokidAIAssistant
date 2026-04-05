@@ -5,6 +5,7 @@ import com.example.rokidphone.data.LiveCameraMode
 import com.example.rokidphone.data.LiveInputSource
 import com.example.rokidphone.data.LiveOutputTarget
 import com.example.rokidphone.data.LiveThinkingLevel
+import com.example.rokidphone.data.PhonePlaybackRoute
 import com.example.rokidphone.data.resolveGeminiLiveModelId
 import com.example.rokidcommon.protocol.LiveRagDisplayMode
 import com.example.rokidcommon.protocol.resolveEffectiveLiveRagDisplayMode
@@ -39,6 +40,7 @@ data class LiveSessionConfig(
     val liveVoiceName: String,
     val capturePhoneAudio: Boolean,
     val playbackPhoneAudio: Boolean,
+    val phonePlaybackRoute: PhonePlaybackRoute,
     val liveCameraMode: LiveCameraMode,
     val liveCameraIntervalSec: Int,
     val liveRagEnabled: Boolean,
@@ -59,6 +61,7 @@ private data class LiveSessionBaseConfig(
     val liveVoiceName: String,
     val capturePhoneAudio: Boolean,
     val playbackPhoneAudio: Boolean,
+    val phonePlaybackRoute: PhonePlaybackRoute,
     val liveCameraMode: LiveCameraMode,
     val liveCameraIntervalSec: Int,
     val liveRagEnabled: Boolean,
@@ -81,6 +84,7 @@ private data class LiveSessionBaseConfig(
             liveVoiceName = liveVoiceName,
             capturePhoneAudio = capturePhoneAudio,
             playbackPhoneAudio = playbackPhoneAudio,
+            phonePlaybackRoute = phonePlaybackRoute,
             liveCameraMode = liveCameraMode,
             liveCameraIntervalSec = liveCameraIntervalSec,
             liveRagEnabled = liveRagEnabled,
@@ -204,6 +208,10 @@ class LiveSessionCoordinator(
                 resolvedOutput == LiveOutputTarget.PHONE ||
                     resolvedOutput == LiveOutputTarget.BOTH
                 ),
+            phonePlaybackRoute = resolvePhonePlaybackRoute(
+                outputTarget = resolvedOutput,
+                configuredRoute = settings.phonePlaybackRoute,
+            ),
             liveCameraMode = settings.liveCameraMode,
             liveCameraIntervalSec = settings.liveCameraIntervalSec,
             liveRagEnabled = settings.liveRagEnabled,
@@ -580,6 +588,17 @@ class LiveSessionCoordinator(
         return when (configured) {
             LiveOutputTarget.AUTO -> if (glassesConnected) LiveOutputTarget.GLASSES else LiveOutputTarget.PHONE
             else -> configured
+        }
+    }
+
+    private fun resolvePhonePlaybackRoute(
+        outputTarget: LiveOutputTarget,
+        configuredRoute: PhonePlaybackRoute,
+    ): PhonePlaybackRoute {
+        return if (outputTarget == LiveOutputTarget.PHONE) {
+            configuredRoute
+        } else {
+            PhonePlaybackRoute.SYSTEM_DEFAULT
         }
     }
 

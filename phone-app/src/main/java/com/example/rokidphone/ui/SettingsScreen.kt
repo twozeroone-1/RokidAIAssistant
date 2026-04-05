@@ -59,6 +59,7 @@ fun SettingsScreen(
     var showLiveInputDialog by remember { mutableStateOf(false) }
     var showExperimentalLiveMicProfileDialog by remember { mutableStateOf(false) }
     var showLiveOutputDialog by remember { mutableStateOf(false) }
+    var showPhonePlaybackRouteDialog by remember { mutableStateOf(false) }
     var showLiveCameraModeDialog by remember { mutableStateOf(false) }
     var showLiveCameraIntervalDialog by remember { mutableStateOf(false) }
     var showLiveVoiceDialog by remember { mutableStateOf(false) }
@@ -78,6 +79,14 @@ fun SettingsScreen(
             LiveOutputTarget.GLASSES -> context.getString(R.string.live_output_target_glasses_label)
             LiveOutputTarget.PHONE -> context.getString(R.string.live_output_target_phone_label)
             LiveOutputTarget.BOTH -> context.getString(R.string.live_output_target_both_label)
+        }
+    }
+    val phonePlaybackRouteLabel = remember(settings.phonePlaybackRoute, context) {
+        when (settings.phonePlaybackRoute) {
+            PhonePlaybackRoute.SYSTEM_DEFAULT ->
+                context.getString(R.string.phone_playback_route_system_default_label)
+            PhonePlaybackRoute.PHONE_SPEAKER ->
+                context.getString(R.string.phone_playback_route_phone_speaker_label)
         }
     }
     val experimentalLiveMicProfileLabel = remember(settings.experimentalLiveMicProfile, context) {
@@ -214,6 +223,17 @@ fun SettingsScreen(
                                         },
                                         onClick = { showLiveOutputDialog = true },
                                         enabled = settings.liveAnswerAudioEnabled
+                                    )
+                                }
+
+                                RealtimeConversationSettingKey.PHONE_PLAYBACK_ROUTE -> {
+                                    SettingsRow(
+                                        title = stringResource(R.string.phone_playback_route),
+                                        subtitle = stringResource(
+                                            R.string.phone_playback_route_summary,
+                                            phonePlaybackRouteLabel
+                                        ),
+                                        onClick = { showPhonePlaybackRouteDialog = true }
                                     )
                                 }
 
@@ -925,6 +945,25 @@ fun SettingsScreen(
                 },
             ),
             onDismiss = { showLiveOutputDialog = false }
+        )
+    }
+
+    if (showPhonePlaybackRouteDialog) {
+        SimpleSelectionDialog(
+            title = stringResource(R.string.phone_playback_route),
+            options = listOf(
+                stringResource(R.string.phone_playback_route_system_default_label) to {
+                    onSettingsChange(
+                        settings.copy(phonePlaybackRoute = PhonePlaybackRoute.SYSTEM_DEFAULT)
+                    )
+                },
+                stringResource(R.string.phone_playback_route_phone_speaker_label) to {
+                    onSettingsChange(
+                        settings.copy(phonePlaybackRoute = PhonePlaybackRoute.PHONE_SPEAKER)
+                    )
+                },
+            ),
+            onDismiss = { showPhonePlaybackRouteDialog = false }
         )
     }
 

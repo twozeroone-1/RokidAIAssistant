@@ -762,7 +762,8 @@ data class ApiSettings(
     val experimentalLiveMicTuningEnabled: Boolean = false,
     val experimentalLiveMicProfile: Int = DEFAULT_EXPERIMENTAL_LIVE_MIC_PROFILE,
     val liveInputSource: LiveInputSource = LiveInputSource.AUTO,
-    val liveOutputTarget: LiveOutputTarget = LiveOutputTarget.AUTO,
+    val liveOutputTarget: LiveOutputTarget = LiveOutputTarget.PHONE,
+    val phonePlaybackRoute: PhonePlaybackRoute = PhonePlaybackRoute.SYSTEM_DEFAULT,
     val liveCameraMode: LiveCameraMode = LiveCameraMode.OFF,
     val liveCameraIntervalSec: Int = 5,
     

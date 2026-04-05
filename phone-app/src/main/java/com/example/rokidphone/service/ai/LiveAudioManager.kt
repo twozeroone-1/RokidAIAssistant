@@ -3,6 +3,7 @@ package com.example.rokidphone.service.ai
 import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
+import android.media.AudioDeviceInfo
 import android.media.AudioAttributes
 import android.media.AudioFormat
 import android.media.AudioManager
@@ -11,8 +12,10 @@ import android.media.AudioTrack
 import android.media.MediaRecorder
 import android.media.audiofx.AcousticEchoCanceler
 import android.media.audiofx.NoiseSuppressor
+import android.os.Build
 import android.util.Log
 import androidx.core.content.ContextCompat
+import com.example.rokidphone.data.PhonePlaybackRoute
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -41,7 +44,8 @@ import java.util.concurrent.atomic.AtomicBoolean
  */
 class LiveAudioManager(
     private val context: Context,
-    private val scope: CoroutineScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    private val scope: CoroutineScope = CoroutineScope(Dispatchers.IO + SupervisorJob()),
+    private val phonePlaybackRoute: PhonePlaybackRoute = PhonePlaybackRoute.SYSTEM_DEFAULT,
 ) {
     companion object {
         private const val TAG = "LiveAudioManager"
@@ -97,6 +101,7 @@ class LiveAudioManager(
     private var acousticEchoCanceler: AcousticEchoCanceler? = null
     private var noiseSuppressor: NoiseSuppressor? = null
     private var audioManager: AudioManager? = null
+    private var forcedPhoneRouteApplied = false
 
     // ========== Control Flags ==========
 
@@ -166,7 +171,7 @@ class LiveAudioManager(
 
         try {
             // Set communication mode to enable AEC
-            audioManager?.mode = AudioManager.MODE_IN_COMMUNICATION
+            updateCommunicationMode()
 
             // Calculate minimum buffer size
             val minBufferSize = AudioRecord.getMinBufferSize(
@@ -235,9 +240,7 @@ class LiveAudioManager(
         isRecording.set(false)
         releaseAudioRecord()
         updateState()
-
-        // Restore normal mode
-        audioManager?.mode = AudioManager.MODE_NORMAL
+        restoreAudioStateIfIdle()
     }
 
     /**
@@ -359,6 +362,7 @@ class LiveAudioManager(
         }
 
         try {
+            updateCommunicationMode()
             val minBufferSize = AudioTrack.getMinBufferSize(
                 OUTPUT_SAMPLE_RATE,
                 OUTPUT_CHANNEL_CONFIG,
@@ -396,6 +400,7 @@ class LiveAudioManager(
             isPlaying.set(true)
             _isModelSpeaking.value = true
             updateState()
+            applyPhonePlaybackRouteIfNeeded()
 
             // For barge-in, keep recording alive while the assistant is speaking.
             if (pauseRecordingDuringPlayback) {
@@ -442,12 +447,14 @@ class LiveAudioManager(
         isPlaying.set(false)
         playbackQueue.clear()
         _isModelSpeaking.value = false
+        clearForcedPhonePlaybackRoute()
         releaseAudioTrack()
         updateState()
 
         if (pauseRecordingDuringPlayback) {
             resumeRecording()
         }
+        restoreAudioStateIfIdle()
     }
 
     /**
@@ -507,6 +514,74 @@ class LiveAudioManager(
         }
     }
 
+    private fun updateCommunicationMode() {
+        audioManager?.mode = AudioManager.MODE_IN_COMMUNICATION
+    }
+
+    private fun restoreAudioStateIfIdle() {
+        if (isRecording.get() || isPlaying.get()) {
+            return
+        }
+        clearForcedPhonePlaybackRoute()
+        audioManager?.mode = AudioManager.MODE_NORMAL
+    }
+
+    private fun applyPhonePlaybackRouteIfNeeded() {
+        if (phonePlaybackRoute != PhonePlaybackRoute.PHONE_SPEAKER) {
+            return
+        }
+
+        val manager = audioManager ?: return
+        forcedPhoneRouteApplied = try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                val speaker = manager.availableCommunicationDevices.firstOrNull {
+                    it.type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER
+                }
+                if (speaker == null) {
+                    Log.w(TAG, "No built-in speaker communication device found, using system route")
+                    false
+                } else {
+                    val applied = manager.setCommunicationDevice(speaker)
+                    if (!applied) {
+                        Log.w(TAG, "Failed to force built-in speaker, using system route")
+                    }
+                    applied
+                }
+            } else {
+                @Suppress("DEPRECATION")
+                run {
+                    manager.isSpeakerphoneOn = true
+                    true
+                }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Unable to apply phone speaker route, using system route", e)
+            false
+        }
+    }
+
+    private fun clearForcedPhonePlaybackRoute() {
+        if (!forcedPhoneRouteApplied) {
+            return
+        }
+
+        val manager = audioManager ?: return
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                manager.clearCommunicationDevice()
+            } else {
+                @Suppress("DEPRECATION")
+                run {
+                    manager.isSpeakerphoneOn = false
+                }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Unable to clear forced phone playback route", e)
+        } finally {
+            forcedPhoneRouteApplied = false
+        }
+    }
+
     // ========== State Update ==========
 
     /**
@@ -563,6 +638,7 @@ class LiveAudioManager(
         abandonAudioFocus()
 
         // Restore normal audio mode
+        clearForcedPhonePlaybackRoute()
         audioManager?.mode = AudioManager.MODE_NORMAL
 
         scope.cancel()

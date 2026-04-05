@@ -183,6 +183,42 @@ class SettingsRepositoryTest {
     }
 
     @Test
+    fun `getSettings defaults live output target to phone when unset`() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        context.deleteSharedPreferences("rokid_api_settings")
+
+        val repository = SettingsRepository(context)
+
+        assertThat(repository.getSettings().liveOutputTarget).isEqualTo(LiveOutputTarget.PHONE)
+    }
+
+    @Test
+    fun `getSettings defaults phone playback route to system when unset`() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        context.deleteSharedPreferences("rokid_api_settings")
+
+        val repository = SettingsRepository(context)
+
+        assertThat(repository.getSettings().phonePlaybackRoute)
+            .isEqualTo(PhonePlaybackRoute.SYSTEM_DEFAULT)
+    }
+
+    @Test
+    fun `saveSettings persists phone playback route`() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val repository = SettingsRepository(context)
+
+        repository.saveSettings(
+            ApiSettings(phonePlaybackRoute = PhonePlaybackRoute.PHONE_SPEAKER)
+        )
+
+        val reloadedSettings = SettingsRepository(context).getSettings()
+
+        assertThat(reloadedSettings.phonePlaybackRoute)
+            .isEqualTo(PhonePlaybackRoute.PHONE_SPEAKER)
+    }
+
+    @Test
     fun `saveSettings clamps live rag auto scroll speed level`() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val repository = SettingsRepository(context)

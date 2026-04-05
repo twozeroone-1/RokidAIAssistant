@@ -45,6 +45,7 @@ class SettingsRepository(private val context: Context) {
         private const val KEY_EXPERIMENTAL_LIVE_MIC_PROFILE = "experimental_live_mic_profile"
         private const val KEY_LIVE_INPUT_SOURCE = "live_input_source"
         private const val KEY_LIVE_OUTPUT_TARGET = "live_output_target"
+        private const val KEY_PHONE_PLAYBACK_ROUTE = "phone_playback_route"
         private const val KEY_LIVE_CAMERA_MODE = "live_camera_mode"
         private const val KEY_LIVE_CAMERA_INTERVAL_SEC = "live_camera_interval_sec"
         private const val KEY_STT_PROVIDER = "stt_provider"
@@ -221,7 +222,13 @@ class SettingsRepository(private val context: Context) {
                 prefs.getString(KEY_LIVE_INPUT_SOURCE, LiveInputSource.AUTO.name) ?: LiveInputSource.AUTO.name
             ),
             liveOutputTarget = LiveOutputTarget.valueOf(
-                prefs.getString(KEY_LIVE_OUTPUT_TARGET, LiveOutputTarget.AUTO.name) ?: LiveOutputTarget.AUTO.name
+                prefs.getString(KEY_LIVE_OUTPUT_TARGET, LiveOutputTarget.PHONE.name) ?: LiveOutputTarget.PHONE.name
+            ),
+            phonePlaybackRoute = PhonePlaybackRoute.valueOf(
+                prefs.getString(
+                    KEY_PHONE_PLAYBACK_ROUTE,
+                    PhonePlaybackRoute.SYSTEM_DEFAULT.name
+                ) ?: PhonePlaybackRoute.SYSTEM_DEFAULT.name
             ),
             liveCameraMode = LiveCameraMode.valueOf(
                 prefs.getString(KEY_LIVE_CAMERA_MODE, LiveCameraMode.OFF.name) ?: LiveCameraMode.OFF.name
@@ -375,6 +382,7 @@ class SettingsRepository(private val context: Context) {
             )
             putString(KEY_LIVE_INPUT_SOURCE, normalizedSettings.liveInputSource.name)
             putString(KEY_LIVE_OUTPUT_TARGET, normalizedSettings.liveOutputTarget.name)
+            putString(KEY_PHONE_PLAYBACK_ROUTE, normalizedSettings.phonePlaybackRoute.name)
             putString(KEY_LIVE_CAMERA_MODE, normalizedSettings.liveCameraMode.name)
             putInt(KEY_LIVE_CAMERA_INTERVAL_SEC, normalizedSettings.liveCameraIntervalSec)
             putString(KEY_GEMINI_API_KEY, normalizedSettings.geminiApiKey)

@@ -1076,6 +1076,7 @@ class PhoneAIService : Service() {
                 liveVoiceName = config.liveVoiceName,
                 capturePhoneAudio = config.capturePhoneAudio,
                 playbackPhoneAudio = config.playbackPhoneAudio,
+                phonePlaybackRoute = config.phonePlaybackRoute,
                 enableLongSession = config.liveLongSessionEnabled,
                 sessionResumptionHandle = config.sessionResumptionHandle,
                 thinkingLevel = config.liveThinkingLevel,

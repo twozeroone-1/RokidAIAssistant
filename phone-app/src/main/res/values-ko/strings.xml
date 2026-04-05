@@ -250,9 +250,13 @@
     <string name="experimental_live_mic_profile_far">1 - 원거리 픽업</string>
     <string name="experimental_live_mic_profile_panorama">2 - 파노라마 사운드 픽업</string>
     <string name="live_output_target_auto_label">자동</string>
-    <string name="live_output_target_glasses_label">안경으로 전달</string>
-    <string name="live_output_target_phone_label">휴대폰 앱 재생</string>
+    <string name="live_output_target_glasses_label">안경 앱 재생</string>
+    <string name="live_output_target_phone_label">휴대폰에서 재생(시스템 출력 사용)</string>
     <string name="live_output_target_both_label">휴대폰 앱 + 안경</string>
+    <string name="phone_playback_route">휴대폰 재생 경로</string>
+    <string name="phone_playback_route_summary">현재 경로: %1$s</string>
+    <string name="phone_playback_route_system_default_label">시스템 기본</string>
+    <string name="phone_playback_route_phone_speaker_label">휴대폰 스피커로 강제 (실험적)</string>
     <string name="live_status_capability_summary">Search %1$s · RAG %2$s · Thinking %3$s</string>
     <string name="live_status_auto">자동</string>
     <string name="live_status_both">둘 다</string>

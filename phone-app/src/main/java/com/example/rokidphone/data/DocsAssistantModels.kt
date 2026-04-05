@@ -24,6 +24,11 @@ enum class LiveOutputTarget {
     BOTH
 }
 
+enum class PhonePlaybackRoute {
+    SYSTEM_DEFAULT,
+    PHONE_SPEAKER
+}
+
 enum class LiveCameraMode {
     OFF,
     MANUAL,

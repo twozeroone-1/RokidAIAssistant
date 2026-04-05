@@ -3,6 +3,7 @@ package com.example.rokidphone.service.ai
 import android.content.Context
 import android.util.Log
 import com.example.rokidphone.data.LiveThinkingLevel
+import com.example.rokidphone.data.PhonePlaybackRoute
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -38,6 +39,7 @@ class GeminiLiveSession(
     private val liveVoiceName: String,
     private val capturePhoneAudio: Boolean = true,
     private val playbackPhoneAudio: Boolean = true,
+    private val phonePlaybackRoute: PhonePlaybackRoute = PhonePlaybackRoute.SYSTEM_DEFAULT,
     private val enableLongSession: Boolean = false,
     private val sessionResumptionHandle: String? = null,
     private val thinkingLevel: LiveThinkingLevel = LiveThinkingLevel.DEFAULT,
@@ -208,7 +210,11 @@ class GeminiLiveSession(
             }
 
             if (capturePhoneAudio || playbackPhoneAudio) {
-                audioManager = LiveAudioManager(context, scope).apply {
+                audioManager = LiveAudioManager(
+                    context = context,
+                    scope = scope,
+                    phonePlaybackRoute = phonePlaybackRoute,
+                ).apply {
                     setPauseRecordingDuringPlayback(
                         shouldPauseRecordingDuringPlayback(vadConfig)
                     )
