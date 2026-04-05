@@ -5,6 +5,7 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Intent
 import android.os.IBinder
+import android.os.SystemClock
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.example.rokidcommon.Constants
@@ -121,6 +122,7 @@ class PhoneAIService : Service() {
     
     // CXR-M SDK Manager (for Rokid glasses connection and photo capture)
     private var cxrManager: CxrMobileManager? = null
+    private lateinit var settingsRepository: SettingsRepository
     
     // Live session coordinator (real-time bidirectional voice)
     private var liveCoordinator: LiveSessionCoordinator? = null
@@ -147,6 +149,8 @@ class PhoneAIService : Service() {
     private var latestLiveUsageMetadata: LiveUsageMetadata? = null
     private var lastSyncedResponseFontScalePercent: Int? = null
     private var lastAppliedExperimentalLiveMicSceneId: Int? = null
+    private var lastGlassesLiveInputSignalElapsedMs: Long? = null
+    private var glassesLiveSyncWatchdogJob: Job? = null
     
     // Track recording IDs currently being processed to prevent duplicate transcription
     private val processingRecordingIds = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
@@ -175,6 +179,7 @@ class PhoneAIService : Service() {
         // Notify UI service has stopped (immediate state update)
         ServiceBridge.updateServiceState(false)
         
+        glassesLiveSyncWatchdogJob?.cancel()
         serviceScope.cancel()
         liveCollectorJobs.forEach { it.cancel() }
         liveCollectorJobs = emptyList()
@@ -190,7 +195,7 @@ class PhoneAIService : Service() {
     
     private fun initializeServices() {
         Log.d(TAG, "Initializing services...")
-        val settingsRepository = SettingsRepository.getInstance(this)
+        settingsRepository = SettingsRepository.getInstance(this)
         
         try {
             val settings = settingsRepository.getSettings()
@@ -640,6 +645,7 @@ class PhoneAIService : Service() {
         
         when (message.type) {
             MessageType.VOICE_DATA -> {
+                noteGlassesLiveInputSignal()
                 message.binaryData?.let { audioChunk ->
                     liveCoordinator?.receiveGlassesAudioChunk(audioChunk)
                 }
@@ -664,6 +670,7 @@ class PhoneAIService : Service() {
             }
             MessageType.VOICE_START -> {
                 Log.d(TAG, "Voice recording started on glasses")
+                noteGlassesLiveInputSignal()
                 
                 // In Live mode, audio is streamed in real-time — no STT step needed
                 if (liveCoordinator?.sessionState?.value == LiveSessionState.ACTIVE) {
@@ -1536,14 +1543,93 @@ class PhoneAIService : Service() {
         )
     }
 
+    private fun noteGlassesLiveInputSignal() {
+        val sessionActive = liveCoordinator?.sessionState?.value == LiveSessionState.ACTIVE
+        val settings = latestValidatedSettings ?: return
+        val inputSource = resolveLiveControlInputSource(settings)
+        if (
+            !GlassesLiveSyncRecoveryPolicy.shouldMonitor(
+                sessionActive = sessionActive,
+                liveModeEnabled = settings.liveModeEnabled,
+                glassesConnected = isGlassesConnected(),
+                effectiveInputSource = inputSource,
+            )
+        ) {
+            return
+        }
+
+        lastGlassesLiveInputSignalElapsedMs = SystemClock.elapsedRealtime()
+        glassesLiveSyncWatchdogJob?.cancel()
+        glassesLiveSyncWatchdogJob = null
+    }
+
+    private fun scheduleGlassesLiveSyncWatchdog(
+        settings: ApiSettings,
+        sessionActive: Boolean,
+        retryCount: Int = 0,
+    ) {
+        glassesLiveSyncWatchdogJob?.cancel()
+        glassesLiveSyncWatchdogJob = null
+
+        val effectiveInputSource = resolveLiveControlInputSource(settings)
+        if (
+            !GlassesLiveSyncRecoveryPolicy.shouldMonitor(
+                sessionActive = sessionActive,
+                liveModeEnabled = settings.liveModeEnabled,
+                glassesConnected = isGlassesConnected(),
+                effectiveInputSource = effectiveInputSource,
+            )
+        ) {
+            return
+        }
+
+        val scheduledAtMs = SystemClock.elapsedRealtime()
+        glassesLiveSyncWatchdogJob = serviceScope.launch {
+            delay(GlassesLiveSyncRecoveryPolicy.WATCHDOG_DELAY_MS)
+
+            val latestSettings = latestValidatedSettings ?: settingsRepository.getSettings()
+            val activeNow = liveCoordinator?.sessionState?.value == LiveSessionState.ACTIVE
+            val currentInputSource = resolveLiveControlInputSource(latestSettings)
+            val shouldRetry = GlassesLiveSyncRecoveryPolicy.shouldRetry(
+                sessionActive = activeNow,
+                liveModeEnabled = latestSettings.liveModeEnabled,
+                glassesConnected = isGlassesConnected(),
+                effectiveInputSource = currentInputSource,
+                scheduledAtMs = scheduledAtMs,
+                lastSignalAtMs = lastGlassesLiveInputSignalElapsedMs,
+                nowMs = SystemClock.elapsedRealtime(),
+                retryCount = retryCount,
+            )
+            if (!shouldRetry) {
+                return@launch
+            }
+
+            Log.w(TAG, "No glasses live input signal after sync; resending LIVE_SESSION_START")
+            sendLiveSessionStateToGlasses(
+                settings = latestSettings,
+                sessionActive = true,
+            )
+            liveSessionAnnouncedToGlasses = true
+            scheduleGlassesLiveSyncWatchdog(
+                settings = latestSettings,
+                sessionActive = true,
+                retryCount = retryCount + 1,
+            )
+        }
+    }
+
     private suspend fun syncLiveSessionStateToGlasses(settings: ApiSettings) {
         if (!isGlassesConnected()) {
+            glassesLiveSyncWatchdogJob?.cancel()
+            glassesLiveSyncWatchdogJob = null
             return
         }
 
         val sessionState = liveCoordinator?.sessionState?.value
         val sessionActive = sessionState == LiveSessionState.ACTIVE
         if (!settings.liveModeEnabled && !liveSessionAnnouncedToGlasses && !sessionActive) {
+            glassesLiveSyncWatchdogJob?.cancel()
+            glassesLiveSyncWatchdogJob = null
             return
         }
 
@@ -1552,6 +1638,10 @@ class PhoneAIService : Service() {
             sessionActive = sessionActive,
         )
         liveSessionAnnouncedToGlasses = sessionActive
+        scheduleGlassesLiveSyncWatchdog(
+            settings = settings,
+            sessionActive = sessionActive,
+        )
     }
 
     private suspend fun syncExperimentalLiveMicScene(settings: ApiSettings) {
