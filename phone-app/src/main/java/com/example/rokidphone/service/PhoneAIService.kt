@@ -1167,8 +1167,9 @@ class PhoneAIService : Service() {
                             }
                             val result = adapter.execute(call, settings.toAnythingLlmSettings())
                             pendingLiveRagTurnState = pendingLiveRagTurnState.applyToolResult(result)
-                            val ragDisplayText = pendingLiveRagTurnState.ragAnswerText
-                                ?: getString(R.string.live_rag_no_result)
+                            val ragDisplayText = pendingLiveRagTurnState.resolveRagDisplayText(
+                                noResultLabel = getString(R.string.live_rag_no_result)
+                            )
                             emitLiveRagTranscript(
                                 text = ragDisplayText,
                                 isFinal = true,

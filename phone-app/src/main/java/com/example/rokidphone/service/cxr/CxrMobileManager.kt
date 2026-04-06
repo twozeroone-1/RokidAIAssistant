@@ -6,7 +6,6 @@ import android.content.Context
 import android.content.res.Resources
 import android.util.Log
 import com.example.rokidphone.BuildConfig
-import com.example.rokidphone.R
 import com.rokid.cxr.client.extend.CxrApi
 import com.rokid.cxr.client.extend.callbacks.*
 import com.rokid.cxr.client.extend.listeners.AiEventListener
@@ -329,9 +328,14 @@ class CxrMobileManager(private val context: Context) {
 
     private fun readSnAuthFile(resources: Resources): ByteArray? {
         return try {
-            resources.openRawResource(R.raw.sn_auth_file).use { it.readBytes() }
+            val rawId = resources.getIdentifier("sn_auth_file", "raw", context.packageName)
+            if (rawId == 0) {
+                Log.w(TAG, "sn_auth_file raw resource is missing")
+                return null
+            }
+            resources.openRawResource(rawId).use { it.readBytes() }
         } catch (notFound: Resources.NotFoundException) {
-            Log.w(TAG, "R.raw.sn_auth_file is missing")
+            Log.w(TAG, "sn_auth_file raw resource is missing")
             null
         } catch (e: Exception) {
             Log.e(TAG, "Failed to read Rokid SN auth file", e)

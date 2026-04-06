@@ -6,6 +6,7 @@ import com.example.rokidphone.service.rag.network.AnythingLlmApi
 import com.example.rokidphone.service.rag.network.AnythingLlmApiFactory
 import com.example.rokidphone.service.rag.network.AnythingLlmChatRequest
 import retrofit2.HttpException
+import java.util.UUID
 
 class AnythingLlmRagService(
     private val apiFactory: (String, String) -> AnythingLlmApi = { serverUrl, apiKey ->
@@ -43,11 +44,13 @@ class AnythingLlmRagService(
         require(normalizedQuestion.isNotBlank()) { "Question must not be blank." }
 
         val api = apiFactory(AnythingLlmApiFactory.normalizeServerUrl(settings.serverUrl), settings.apiKey)
+        val requestSessionId = if (settings.alwaysNewSession) UUID.randomUUID().toString() else null
         val response = api.chat(
             slug = settings.workspaceSlug,
             request = AnythingLlmChatRequest(
                 message = normalizedQuestion,
                 mode = settings.queryMode.wireValue,
+                sessionId = requestSessionId,
             ),
         )
 

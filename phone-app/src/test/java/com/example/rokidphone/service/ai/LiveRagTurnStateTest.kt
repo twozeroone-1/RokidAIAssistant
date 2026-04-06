@@ -34,7 +34,7 @@ class LiveRagTurnStateTest {
     }
 
     @Test
-    fun `single display shows no result label when tool is called without usable answer`() {
+    fun `single display shows failure text when tool returns an error message`() {
         val state = LiveRagTurnState()
             .markToolInvoked()
             .applyToolResult(ToolResult.failure("tool-2", "Docs search failed."))
@@ -45,7 +45,45 @@ class LiveRagTurnStateTest {
             noResultLabel = "문서 검색 없음"
         )
 
-        assertThat(finalText).isEqualTo("문서 검색 없음")
+        assertThat(finalText).isEqualTo("Docs search failed.")
+    }
+
+    @Test
+    fun `single display shows tool failure reason instead of no result label`() {
+        val state = LiveRagTurnState()
+            .markToolInvoked()
+            .applyToolResult(
+                ToolResult.failure(
+                    "tool-3",
+                    "AnythingLLM answer failed: HTTP 401 Unauthorized"
+                )
+            )
+
+        val finalText = state.resolveFinalText(
+            displayMode = LiveRagDisplayMode.RAG_RESULT_ONLY,
+            assistantText = "문서를 다시 찾아보세요.",
+            noResultLabel = "문서 검색 없음"
+        )
+
+        assertThat(finalText).isEqualTo("AnythingLLM answer failed: HTTP 401 Unauthorized")
+    }
+
+    @Test
+    fun `current rag display text shows tool failure reason instead of no result label`() {
+        val state = LiveRagTurnState()
+            .markToolInvoked()
+            .applyToolResult(
+                ToolResult.failure(
+                    "tool-3a",
+                    "AnythingLLM answer failed: HTTP 503 Service Unavailable"
+                )
+            )
+
+        val displayText = state.resolveRagDisplayText(
+            noResultLabel = "문서 검색 없음"
+        )
+
+        assertThat(displayText).isEqualTo("AnythingLLM answer failed: HTTP 503 Service Unavailable")
     }
 
     @Test
@@ -61,5 +99,27 @@ class LiveRagTurnStateTest {
 
         assertThat(panels.leftText).isEqualTo("지금은 오후 3시입니다.")
         assertThat(panels.rightText).isEqualTo("문서 검색 없음")
+    }
+
+    @Test
+    fun `split display shows tool failure reason on right when rag fails`() {
+        val state = LiveRagTurnState()
+            .markToolInvoked()
+            .applyToolResult(
+                ToolResult.failure(
+                    "tool-4",
+                    "AnythingLLM workspace slug is required."
+                )
+            )
+
+        val panels = state.resolveSplitPanels(
+            assistantText = "문서를 다시 찾아보세요.",
+            searchingLabel = "문서 검색 중...",
+            noResultLabel = "문서 검색 없음",
+            turnComplete = true,
+        )
+
+        assertThat(panels.leftText).isEqualTo("문서를 다시 찾아보세요.")
+        assertThat(panels.rightText).isEqualTo("AnythingLLM workspace slug is required.")
     }
 }
