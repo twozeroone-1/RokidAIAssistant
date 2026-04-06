@@ -6,13 +6,11 @@ import com.example.rokidphone.service.rag.network.AnythingLlmApi
 import com.example.rokidphone.service.rag.network.AnythingLlmApiFactory
 import com.example.rokidphone.service.rag.network.AnythingLlmChatRequest
 import retrofit2.HttpException
-import java.util.UUID
 
 class AnythingLlmRagService(
     private val apiFactory: (String, String) -> AnythingLlmApi = { serverUrl, apiKey ->
         AnythingLlmApiFactory.create(serverUrl, apiKey)
     },
-    private val sessionIdFactory: () -> String = { UUID.randomUUID().toString() },
 ) : RagService {
 
     override suspend fun checkHealth(settings: AnythingLlmSettings): Result<RagHealthResult> = runCatching {
@@ -50,8 +48,6 @@ class AnythingLlmRagService(
             request = AnythingLlmChatRequest(
                 message = normalizedQuestion,
                 mode = settings.queryMode.wireValue,
-                sessionId = if (settings.alwaysNewSession) sessionIdFactory() else null,
-                reset = settings.alwaysNewSession,
             ),
         )
 

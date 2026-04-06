@@ -42,10 +42,6 @@ data class AnythingLlmChatRequest(
     val message: String,
     @SerializedName("mode")
     val mode: String = "query",
-    @SerializedName("sessionId")
-    val sessionId: String? = null,
-    @SerializedName("reset")
-    val reset: Boolean = false,
 )
 
 data class AnythingLlmChatSource(

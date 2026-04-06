@@ -89,39 +89,4 @@ class AnythingLlmRagServiceTest {
         assertThat(result.sources.first().title).isEqualTo("deploy.md")
         assertThat(result.sources.first().snippet).contains("deployment check")
     }
-
-    @Test
-    fun `answer includes session id and reset when always new session is enabled`() = runTest {
-        serverRule.server.enqueue(
-            jsonResponse("""{"id":"chat-1","textResponse":"ok","sources":[],"close":true}""")
-        )
-
-        val service = AnythingLlmRagService(sessionIdFactory = { "rag-session-1" })
-        service.answer(createSettings(), "How do I deploy?").getOrThrow()
-
-        val requestBody = serverRule.server.takeRequest().body.readUtf8()
-        assertThat(requestBody).contains("\"sessionId\":\"rag-session-1\"")
-        assertThat(requestBody).contains("\"reset\":true")
-    }
-
-    @Test
-    fun `answer generates a fresh session id per request`() = runTest {
-        serverRule.server.enqueue(
-            jsonResponse("""{"id":"chat-1","textResponse":"one","sources":[],"close":true}""")
-        )
-        serverRule.server.enqueue(
-            jsonResponse("""{"id":"chat-2","textResponse":"two","sources":[],"close":true}""")
-        )
-
-        val ids = ArrayDeque(listOf("rag-session-1", "rag-session-2"))
-        val service = AnythingLlmRagService(sessionIdFactory = { ids.removeFirst() })
-
-        service.answer(createSettings(), "first").getOrThrow()
-        service.answer(createSettings(), "second").getOrThrow()
-
-        val firstBody = serverRule.server.takeRequest().body.readUtf8()
-        val secondBody = serverRule.server.takeRequest().body.readUtf8()
-        assertThat(firstBody).contains("\"sessionId\":\"rag-session-1\"")
-        assertThat(secondBody).contains("\"sessionId\":\"rag-session-2\"")
-    }
 }
