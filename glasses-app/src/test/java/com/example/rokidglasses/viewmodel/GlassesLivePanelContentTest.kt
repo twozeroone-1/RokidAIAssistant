@@ -20,8 +20,8 @@ class GlassesLivePanelContentTest {
         assertThat(content.showSplitPanels).isTrue()
         assertThat(content.leftText).isEqualTo("왼쪽 응답")
         assertThat(content.rightText).isEqualTo("오른쪽 문서 결과")
-        assertThat(content.autoScrollRightPanel).isFalse()
-        assertThat(content.manualScrollRightPanel).isFalse()
+        assertThat(content.autoScrollPanels).isTrue()
+        assertThat(content.manualScrollPanels).isFalse()
     }
 
     @Test
@@ -37,8 +37,8 @@ class GlassesLivePanelContentTest {
         )
 
         assertThat(content.showSplitPanels).isFalse()
-        assertThat(content.autoScrollRightPanel).isFalse()
-        assertThat(content.manualScrollRightPanel).isFalse()
+        assertThat(content.autoScrollPanels).isFalse()
+        assertThat(content.manualScrollPanels).isFalse()
     }
 
     @Test
@@ -54,12 +54,12 @@ class GlassesLivePanelContentTest {
         )
 
         assertThat(content.showSplitPanels).isFalse()
-        assertThat(content.autoScrollRightPanel).isFalse()
-        assertThat(content.manualScrollRightPanel).isFalse()
+        assertThat(content.autoScrollPanels).isFalse()
+        assertThat(content.manualScrollPanels).isFalse()
     }
 
     @Test
-    fun `split live rag mode auto scrolls right panel only after final rag arrives`() {
+    fun `split live rag mode enables synchronized auto scrolling when auto mode is selected`() {
         val content = resolveLivePanelContent(
             isLiveModeActive = true,
             liveRagEnabled = true,
@@ -67,16 +67,16 @@ class GlassesLivePanelContentTest {
             splitScrollMode = GlassesLiveRagSplitScrollMode.AUTO,
             assistantText = "왼쪽 응답",
             ragText = "오른쪽 문서 결과",
-            ragTextFinalized = true,
+            ragTextFinalized = false,
         )
 
         assertThat(content.showSplitPanels).isTrue()
-        assertThat(content.autoScrollRightPanel).isTrue()
-        assertThat(content.manualScrollRightPanel).isFalse()
+        assertThat(content.autoScrollPanels).isTrue()
+        assertThat(content.manualScrollPanels).isFalse()
     }
 
     @Test
-    fun `split live rag mode enables manual right panel scrolling when manual mode is selected`() {
+    fun `split live rag mode enables synchronized manual scrolling when manual mode is selected`() {
         val content = resolveLivePanelContent(
             isLiveModeActive = true,
             liveRagEnabled = true,
@@ -88,8 +88,44 @@ class GlassesLivePanelContentTest {
         )
 
         assertThat(content.showSplitPanels).isTrue()
-        assertThat(content.autoScrollRightPanel).isFalse()
-        assertThat(content.manualScrollRightPanel).isTrue()
+        assertThat(content.autoScrollPanels).isFalse()
+        assertThat(content.manualScrollPanels).isTrue()
+    }
+
+    @Test
+    fun `manual directional input becomes synchronized manual scroll action`() {
+        val action = resolveLivePanelScrollAction(
+            livePanelContent = GlassesLivePanelContent(
+                showSplitPanels = true,
+                leftText = "left",
+                rightText = "right",
+                autoScrollPanels = false,
+                manualScrollPanels = true,
+            ),
+            command = LiveRagManualScrollCommand.UP,
+        )
+
+        assertThat(action).isEqualTo(
+            LivePanelScrollAction.Manual(LiveRagManualScrollCommand.UP)
+        )
+    }
+
+    @Test
+    fun `auto directional input becomes synchronized auto direction action`() {
+        val action = resolveLivePanelScrollAction(
+            livePanelContent = GlassesLivePanelContent(
+                showSplitPanels = true,
+                leftText = "left",
+                rightText = "right",
+                autoScrollPanels = true,
+                manualScrollPanels = false,
+            ),
+            command = LiveRagManualScrollCommand.DOWN,
+        )
+
+        assertThat(action).isEqualTo(
+            LivePanelScrollAction.Auto(LiveRagAutoScrollDirection.DOWN)
+        )
     }
 
     @Test

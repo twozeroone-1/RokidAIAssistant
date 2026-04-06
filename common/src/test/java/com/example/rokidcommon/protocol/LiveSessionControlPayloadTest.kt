@@ -61,7 +61,7 @@ class LiveSessionControlPayloadTest {
         assertThat(restored.effectiveInputSource).isEqualTo(LiveControlInputSource.UNKNOWN)
         assertThat(restored.cameraMode).isEqualTo("REALTIME")
         assertThat(restored.cameraIntervalSec).isEqualTo(1)
-        assertThat(restored.splitScrollMode).isEqualTo(LiveRagSplitScrollMode.AUTO)
+        assertThat(restored.splitScrollMode).isEqualTo(LiveRagSplitScrollMode.MANUAL)
         assertThat(restored.autoScrollSpeedLevel).isEqualTo(2)
         assertThat(restored.experimentalLiveMicTuningEnabled).isFalse()
         assertThat(restored.experimentalLiveMicProfile).isEqualTo(0)

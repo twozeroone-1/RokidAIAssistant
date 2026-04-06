@@ -23,7 +23,7 @@ data class LiveSessionControlPayload(
     val cameraIntervalSec: Int? = null,
     val liveRagEnabled: Boolean = false,
     val ragDisplayMode: LiveRagDisplayMode = LiveRagDisplayMode.RAG_RESULT_ONLY,
-    val splitScrollMode: LiveRagSplitScrollMode = LiveRagSplitScrollMode.AUTO,
+    val splitScrollMode: LiveRagSplitScrollMode = LiveRagSplitScrollMode.MANUAL,
     val autoScrollSpeedLevel: Int = 2,
     val experimentalLiveMicTuningEnabled: Boolean = false,
     val experimentalLiveMicProfile: Int = 0,

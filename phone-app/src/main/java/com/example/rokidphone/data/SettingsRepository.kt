@@ -200,7 +200,7 @@ class SettingsRepository(private val context: Context) {
                 prefs.getString(KEY_LIVE_RAG_DISPLAY_MODE, LiveRagDisplayMode.RAG_RESULT_ONLY.name)
             ),
             liveRagSplitScrollMode = LiveRagSplitScrollMode.fromRaw(
-                prefs.getString(KEY_LIVE_RAG_SPLIT_SCROLL_MODE, LiveRagSplitScrollMode.AUTO.name)
+                prefs.getString(KEY_LIVE_RAG_SPLIT_SCROLL_MODE, LiveRagSplitScrollMode.MANUAL.name)
             ),
             liveRagAutoScrollSpeedLevel = ApiSettings.clampLiveRagAutoScrollSpeedLevel(
                 prefs.getInt(

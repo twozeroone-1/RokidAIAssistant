@@ -193,6 +193,17 @@ class SettingsRepositoryTest {
     }
 
     @Test
+    fun `getSettings defaults live rag split scroll mode to manual when unset`() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        context.deleteSharedPreferences("rokid_api_settings")
+
+        val repository = SettingsRepository(context)
+
+        assertThat(repository.getSettings().liveRagSplitScrollMode)
+            .isEqualTo(LiveRagSplitScrollMode.MANUAL)
+    }
+
+    @Test
     fun `getSettings defaults phone playback route to system when unset`() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         context.deleteSharedPreferences("rokid_api_settings")

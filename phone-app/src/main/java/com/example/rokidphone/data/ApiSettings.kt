@@ -757,7 +757,7 @@ data class ApiSettings(
     val liveThinkingLevel: LiveThinkingLevel = LiveThinkingLevel.DEFAULT,
     val liveThoughtSummariesEnabled: Boolean = false,
     val liveRagDisplayMode: LiveRagDisplayMode = LiveRagDisplayMode.RAG_RESULT_ONLY,
-    val liveRagSplitScrollMode: LiveRagSplitScrollMode = LiveRagSplitScrollMode.AUTO,
+    val liveRagSplitScrollMode: LiveRagSplitScrollMode = LiveRagSplitScrollMode.MANUAL,
     val liveRagAutoScrollSpeedLevel: Int = DEFAULT_LIVE_RAG_AUTO_SCROLL_SPEED_LEVEL,
     val experimentalLiveMicTuningEnabled: Boolean = false,
     val experimentalLiveMicProfile: Int = DEFAULT_EXPERIMENTAL_LIVE_MIC_PROFILE,

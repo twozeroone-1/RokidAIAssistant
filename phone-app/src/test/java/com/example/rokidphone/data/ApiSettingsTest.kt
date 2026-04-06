@@ -42,7 +42,7 @@ class ApiSettingsTest {
         assertThat(settings.phonePlaybackRoute).isEqualTo(PhonePlaybackRoute.SYSTEM_DEFAULT)
         assertThat(settings.liveCameraMode).isEqualTo(LiveCameraMode.OFF)
         assertThat(settings.liveCameraIntervalSec).isEqualTo(5)
-        assertThat(settings.liveRagSplitScrollMode).isEqualTo(LiveRagSplitScrollMode.AUTO)
+        assertThat(settings.liveRagSplitScrollMode).isEqualTo(LiveRagSplitScrollMode.MANUAL)
         assertThat(settings.liveRagAutoScrollSpeedLevel)
             .isEqualTo(ApiSettings.DEFAULT_LIVE_RAG_AUTO_SCROLL_SPEED_LEVEL)
         assertThat(settings.experimentalLiveMicTuningEnabled).isFalse()

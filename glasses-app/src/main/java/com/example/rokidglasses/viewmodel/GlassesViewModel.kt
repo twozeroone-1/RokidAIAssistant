@@ -87,8 +87,9 @@ data class GlassesUiState(
     val liveTranscription: String = "",
     val liveRagEnabled: Boolean = false,
     val liveRagDisplayMode: LiveRagDisplayMode = LiveRagDisplayMode.RAG_RESULT_ONLY,
-    val liveRagSplitScrollMode: LiveRagSplitScrollMode = LiveRagSplitScrollMode.AUTO,
+    val liveRagSplitScrollMode: LiveRagSplitScrollMode = LiveRagSplitScrollMode.MANUAL,
     val liveRagAutoScrollSpeedLevel: Int = 2,
+    val liveRagAutoScrollDirection: LiveRagAutoScrollDirection = LiveRagAutoScrollDirection.DOWN,
     val liveAssistantText: String = "",
     val liveRagText: String = "",
     val liveRagIsFinal: Boolean = false,
@@ -1414,6 +1415,7 @@ class GlassesViewModel(
                     liveRagDisplayMode = LiveRagDisplayMode.RAG_RESULT_ONLY,
                     liveRagSplitScrollMode = liveRagSplitScrollMode,
                     liveRagAutoScrollSpeedLevel = liveRagAutoScrollSpeedLevel,
+                    liveRagAutoScrollDirection = LiveRagAutoScrollDirection.DOWN,
                 )
             }
             return
@@ -1444,6 +1446,7 @@ class GlassesViewModel(
                     liveRagDisplayMode = ragDisplayMode,
                     liveRagSplitScrollMode = liveRagSplitScrollMode,
                     liveRagAutoScrollSpeedLevel = liveRagAutoScrollSpeedLevel,
+                    liveRagAutoScrollDirection = LiveRagAutoScrollDirection.DOWN,
                 )
             }
         } catch (e: Exception) {
@@ -1460,6 +1463,7 @@ class GlassesViewModel(
                     liveRagDisplayMode = LiveRagDisplayMode.RAG_RESULT_ONLY,
                     liveRagSplitScrollMode = liveRagSplitScrollMode,
                     liveRagAutoScrollSpeedLevel = liveRagAutoScrollSpeedLevel,
+                    liveRagAutoScrollDirection = LiveRagAutoScrollDirection.DOWN,
                 )
             }
         }
@@ -1633,12 +1637,21 @@ class GlassesViewModel(
         }
 
         val livePanelContent = resolveCurrentLivePanelContent(state)
-        if (!livePanelContent.manualScrollRightPanel) {
-            return false
-        }
+        return when (val scrollAction = resolveLivePanelScrollAction(livePanelContent, command)) {
+            is LivePanelScrollAction.Manual -> {
+                _liveRagManualScrollCommands.tryEmit(scrollAction.command)
+                true
+            }
 
-        _liveRagManualScrollCommands.tryEmit(command)
-        return true
+            is LivePanelScrollAction.Auto -> {
+                _uiState.update {
+                    it.copy(liveRagAutoScrollDirection = scrollAction.direction)
+                }
+                true
+            }
+
+            null -> false
+        }
     }
 
     fun handlePrimaryAction() {

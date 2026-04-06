@@ -8,8 +8,8 @@ data class GlassesLivePanelContent(
     val showSplitPanels: Boolean,
     val leftText: String,
     val rightText: String,
-    val autoScrollRightPanel: Boolean,
-    val manualScrollRightPanel: Boolean,
+    val autoScrollPanels: Boolean,
+    val manualScrollPanels: Boolean,
 )
 
 typealias GlassesLiveRagDisplayMode = LiveRagDisplayMode
@@ -18,6 +18,25 @@ typealias GlassesLiveRagSplitScrollMode = LiveRagSplitScrollMode
 enum class LiveRagManualScrollCommand {
     UP,
     DOWN,
+}
+
+enum class LiveRagAutoScrollDirection {
+    UP,
+    DOWN;
+
+    companion object {
+        fun fromDirectionalCommand(command: LiveRagManualScrollCommand): LiveRagAutoScrollDirection {
+            return when (command) {
+                LiveRagManualScrollCommand.UP -> UP
+                LiveRagManualScrollCommand.DOWN -> DOWN
+            }
+        }
+    }
+}
+
+sealed interface LivePanelScrollAction {
+    data class Manual(val command: LiveRagManualScrollCommand) : LivePanelScrollAction
+    data class Auto(val direction: LiveRagAutoScrollDirection) : LivePanelScrollAction
 }
 
 fun resolveLiveRagAutoScrollDurationMillis(
@@ -59,6 +78,18 @@ fun resolveLiveRagManualScrollTarget(
     return target.takeIf { it != currentScrollPx }
 }
 
+fun resolveLivePanelScrollAction(
+    livePanelContent: GlassesLivePanelContent,
+    command: LiveRagManualScrollCommand,
+): LivePanelScrollAction? {
+    return when {
+        livePanelContent.manualScrollPanels -> LivePanelScrollAction.Manual(command)
+        livePanelContent.autoScrollPanels ->
+            LivePanelScrollAction.Auto(LiveRagAutoScrollDirection.fromDirectionalCommand(command))
+        else -> null
+    }
+}
+
 fun resolveLivePanelContent(
     isLiveModeActive: Boolean,
     liveRagEnabled: Boolean,
@@ -80,12 +111,11 @@ fun resolveLivePanelContent(
         showSplitPanels = showSplitPanels,
         leftText = assistantText,
         rightText = ragText,
-        autoScrollRightPanel = showSplitPanels &&
-            ragText.isNotBlank() &&
-            ragTextFinalized &&
+        autoScrollPanels = showSplitPanels &&
+            (assistantText.isNotBlank() || ragText.isNotBlank()) &&
             splitScrollMode == GlassesLiveRagSplitScrollMode.AUTO,
-        manualScrollRightPanel = showSplitPanels &&
-            ragText.isNotBlank() &&
+        manualScrollPanels = showSplitPanels &&
+            (assistantText.isNotBlank() || ragText.isNotBlank()) &&
             splitScrollMode == GlassesLiveRagSplitScrollMode.MANUAL,
     )
 }

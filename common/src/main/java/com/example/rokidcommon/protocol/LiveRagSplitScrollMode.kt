@@ -7,9 +7,9 @@ enum class LiveRagSplitScrollMode {
     companion object {
         fun fromRaw(raw: String?): LiveRagSplitScrollMode {
             if (raw.isNullOrBlank()) {
-                return AUTO
+                return MANUAL
             }
-            return entries.find { it.name.equals(raw, ignoreCase = true) } ?: AUTO
+            return entries.find { it.name.equals(raw, ignoreCase = true) } ?: MANUAL
         }
     }
 }

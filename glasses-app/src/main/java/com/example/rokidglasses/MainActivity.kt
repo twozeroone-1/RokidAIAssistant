@@ -45,6 +45,7 @@ import com.example.rokidglasses.viewmodel.GlassesDisplayStage
 import com.example.rokidglasses.viewmodel.GlassesLivePanelContent
 import com.example.rokidglasses.viewmodel.GlassesViewModel
 import com.example.rokidglasses.viewmodel.deriveDisplayStage
+import com.example.rokidglasses.viewmodel.LiveRagAutoScrollDirection
 import com.example.rokidglasses.viewmodel.LiveRagManualScrollCommand
 import com.example.rokidglasses.viewmodel.resolveLivePanelContent
 import com.example.rokidglasses.viewmodel.resolveDisplayTextRenderState
@@ -55,8 +56,8 @@ import com.example.rokidglasses.viewmodel.shouldUseLiveMinimalResponseFontScale
 import com.example.rokidglasses.viewmodel.responseFontScaleMultiplier
 import com.example.rokidglasses.viewmodel.shouldUseLiveMinimalUi
 import com.example.rokidglasses.viewmodel.toSleepModeSnapshot
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
+import kotlin.math.abs
 
 class MainActivity : ComponentActivity() {
     
@@ -402,6 +403,7 @@ fun GlassesMainScreen(
                 responseFontScalePercent = uiState.responseFontScalePercent,
                 useResponseFontScale = useResponseFontScale,
                 liveRagAutoScrollSpeedLevel = uiState.liveRagAutoScrollSpeedLevel,
+                liveRagAutoScrollDirection = uiState.liveRagAutoScrollDirection,
                 liveRagManualScrollCommands = viewModel.liveRagManualScrollCommands,
                 showSplitPanelTitles = !shouldUseLiveMinimalUi,
                 showPaginationNavigationHints = !shouldUseLiveMinimalUi,
@@ -603,6 +605,7 @@ fun MainDisplayArea(
     responseFontScalePercent: Int,
     useResponseFontScale: Boolean,
     liveRagAutoScrollSpeedLevel: Int,
+    liveRagAutoScrollDirection: LiveRagAutoScrollDirection,
     liveRagManualScrollCommands: Flow<LiveRagManualScrollCommand>,
     showSplitPanelTitles: Boolean,
     showPaginationNavigationHints: Boolean,
@@ -667,10 +670,11 @@ fun MainDisplayArea(
                     modifier = Modifier.weight(1f),
                     fontSize = splitFontSize,
                     lineHeight = splitLineHeight,
-                    autoScroll = false,
+                    autoScroll = livePanelContent.autoScrollPanels,
+                    autoScrollDirection = liveRagAutoScrollDirection,
                     autoScrollSpeedLevel = liveRagAutoScrollSpeedLevel,
-                    manualScroll = false,
-                    manualScrollCommands = null,
+                    manualScroll = livePanelContent.manualScrollPanels,
+                    manualScrollCommands = liveRagManualScrollCommands,
                 )
                 SplitPanel(
                     title = stringResource(R.string.live_split_panel_rag),
@@ -679,9 +683,10 @@ fun MainDisplayArea(
                     modifier = Modifier.weight(1f),
                     fontSize = splitFontSize,
                     lineHeight = splitLineHeight,
-                    autoScroll = livePanelContent.autoScrollRightPanel,
+                    autoScroll = livePanelContent.autoScrollPanels,
+                    autoScrollDirection = liveRagAutoScrollDirection,
                     autoScrollSpeedLevel = liveRagAutoScrollSpeedLevel,
-                    manualScroll = livePanelContent.manualScrollRightPanel,
+                    manualScroll = livePanelContent.manualScrollPanels,
                     manualScrollCommands = liveRagManualScrollCommands,
                 )
             }
@@ -746,6 +751,7 @@ private fun SplitPanel(
     fontSize: Float,
     lineHeight: Float,
     autoScroll: Boolean,
+    autoScrollDirection: LiveRagAutoScrollDirection,
     autoScrollSpeedLevel: Int,
     manualScroll: Boolean,
     manualScrollCommands: Flow<LiveRagManualScrollCommand>?,
@@ -753,7 +759,7 @@ private fun SplitPanel(
     val scrollState = rememberScrollState()
     var viewportHeightPx by remember { mutableStateOf(0) }
 
-    LaunchedEffect(text, autoScroll, manualScroll, autoScrollSpeedLevel) {
+    LaunchedEffect(text, autoScroll, manualScroll, autoScrollSpeedLevel, autoScrollDirection) {
         if (text.isBlank()) {
             scrollState.scrollTo(0)
             return@LaunchedEffect
@@ -768,20 +774,20 @@ private fun SplitPanel(
 
         withFrameNanos { }
         withFrameNanos { }
+        val targetValue = when (autoScrollDirection) {
+            LiveRagAutoScrollDirection.UP -> 0
+            LiveRagAutoScrollDirection.DOWN -> scrollState.maxValue
+        }
+        val scrollDistancePx = abs(targetValue - scrollState.value)
         val durationMillis = resolveLiveRagAutoScrollDurationMillis(
-            maxScrollPx = scrollState.maxValue,
+            maxScrollPx = scrollDistancePx,
             speedLevel = autoScrollSpeedLevel,
         ) ?: return@LaunchedEffect
-        scrollState.scrollTo(0)
-        withFrameNanos { }
-        withFrameNanos { }
-        val maxValue = scrollState.maxValue
-        if (maxValue <= 0) {
+        if (scrollDistancePx <= 0) {
             return@LaunchedEffect
         }
-        delay(500)
         scrollState.animateScrollTo(
-            value = maxValue,
+            value = targetValue,
             animationSpec = tween(
                 durationMillis = durationMillis,
                 easing = LinearEasing,
